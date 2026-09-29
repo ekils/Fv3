@@ -1,0 +1,2570 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>News Radar</title>
+<style>
+  :root {
+    /* 流程圖專用霓虹色，跟圖表的漲跌綠紅分開，改這裡不會影響股價圖 */
+    --flow-run:  #b88400;
+    --flow-done: #c2560a;
+    --flow-core: #fff4c2;
+    /* 高低區間 bar 的霓虹 */
+    --neon:      #d926c9;
+    --neon-glow: rgba(217,38,201,.55);
+    /* 兩欄卡片的高度，左右共用同一個值 */
+  --col-h: 560px;
+  color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --plane:          #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --axis:           #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --critical:       #d03b3b;
+    --neon-yellow:    #9a6b00;
+    --neon-orange:    #b35c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --flow-run:  #ffd400;
+      --flow-done: #ff8c1a;
+      --flow-core: #fffbe8;
+    --neon-yellow: #ffd400;
+    --neon-orange: #ff8c1a;
+      --surface-1:      #1a1a19;
+      --plane:          #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --axis:           #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --flow-run:  #ffd400;
+    --flow-done: #ff8c1a;
+    --flow-core: #fffbe8;
+    --neon-yellow: #ffd400;
+    --neon-orange: #ff8c1a;
+    --surface-1:      #1a1a19;
+    --plane:          #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--plane);
+    color: var(--text-primary);
+  }
+  .viz-root { min-height: 100%; background: var(--plane); }
+  /* 工具列是 fixed 的，內容區要自己讓開。兩邊吃同一個變數，展開時才不會被蓋住 */
+  /* 靠左排，不置中：置中 + 固定寬度會在工具列和內容之間開出一條幾百 px 的空溝 */
+  .wrap { max-width: 1680px; margin: 0; padding: 32px 24px 96px calc(var(--rail-w) + 16px); }
+  @media (max-width: 1080px) { .wrap { padding: 88px 20px 96px; } }
+
+  /* 卡片兩兩並排；螢幕窄了就自動疊回單欄 */
+  /* 每一列左右兩張卡都等高：grid 預設 stretch，中間的容器 div 也要把高度傳下去 */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 1080px) { .cols { grid-template-columns: 1fr; } }
+  /* 格子裡放的是容器 div（#compare、#basics…），卡片本身的下邊距要交還給 grid 的 gap */
+  .cols > * { min-width: 0; display: flex; flex-direction: column; }
+  .cols > .card, .cols > * > .card, .cols > * > details.basics {
+    margin: 0; flex: 1; min-height: 0;
+  }
+  /* 走勢圖那一列另外給一個地板高度，圖才有畫的地方。高度只有這一個旋鈕：改 --col-h */
+  .cols.tall > .card, .cols.tall > * > .card { min-height: var(--col-h); }
+  .cols.tall > * > .card { display: flex; flex-direction: column; }
+  .cols.tall .card > #chart { flex: 1; min-height: 0; }
+  /* 流程圖自己占一整列。裡面的 SVG 是 height:100%，父層不給死高度它會直接塌成 0 */
+  /* 440 不是隨便挑的：流程圖的 viewBox 是 900×300，整列寬約 1430px，等比就是這個高度 */
+  #flowCard { display: flex; flex-direction: column; height: 440px; }
+  #flowCard > svg { flex: 1; min-height: 0; }
+  #flow, #chart > svg { width: 100%; height: 100%; }
+
+  .quote { margin-bottom: 14px; }
+  .idline { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
+  .idline .co { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 固定成同一個方框，圖片縮在裡面 —— 各家 logo 比例不同，不鎖死會一家一個高度 */
+  .idline .logobox {
+    width: 40px; height: 40px; border-radius: 8px; background: #fff;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    padding: 4px; overflow: hidden;
+  }
+  .idline .logobox img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .hilo { margin-left: auto; display: flex; gap: 16px; flex: 0 0 auto; white-space: nowrap; }
+  .rbar { flex: 0 0 132px; }
+  /* 高度壓到一半的作法：低點高點併進標題那一行，整塊只剩「一行字 + 一條軌道」 */
+  .rtitle { display: flex; justify-content: space-between; gap: 6px; font-size: 9.5px;
+    line-height: 1.2; color: var(--text-muted); margin-bottom: 3px; }
+  .rtitle .rlohi { font-variant-numeric: tabular-nums; }
+  .rtitle .rpct { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rtrack { position: relative; height: 3px; border-radius: 99px;
+    background: linear-gradient(90deg,
+      hsl(145 100% 55% / .30), hsl(72 100% 55% / .22), hsl(0 100% 58% / .30)); }
+  .rdot { position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%;
+    transform: translate(-50%, -50%); }
+  @media (max-width: 900px) { .hilo { display: none; } }
+  /* 代號走彩色漸層；公司全名就在旁邊，所以顏色純粹是裝飾，不承載資訊 */
+  .sym {
+    font-weight: 750;
+    background: linear-gradient(96deg, #ffd400 0%, #ff8c1a 34%, #ff4d7d 64%, #6a8cff 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  .quote .sym { font-size: 26px; letter-spacing: 0.01em; }
+  .quote .co { font-size: 16px; color: var(--text-primary); margin-left: 8px; }
+  .quote .last { font-size: 36px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  .quote .delta { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 10px; }
+  .quote .span { font-size: 15px; color: var(--text-primary); margin-left: 8px; font-weight: 400; }
+  .chart-ranges { display: inline-flex; flex-wrap: wrap; margin-bottom: 8px; }
+  .chart-ranges span { padding: 7px 12px; font-size: 15.5px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 28px; }
+  h1 { font-size: 27px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  header .sub { font-size: 17px; color: var(--text-muted); }
+  #theme {
+    margin-left: auto; background: none; border: 1px solid var(--border);
+    color: var(--text-secondary); border-radius: 8px; padding: 5px 10px;
+    font: inherit; font-size: 16px; cursor: pointer;
+  }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; margin-bottom: 20px;
+  }
+  /* 卡片標題一律橙橘色 —— 一眼看得出一張卡從哪裡開始 */
+  .card > h2, .cmp-head h2, details.basics > summary, .fold > summary, #valuBody h3 {
+    color: var(--neon-orange);
+  }
+  .card > h2 {
+    font-size: 17px; font-weight: 600; margin: 0 0 16px; letter-spacing: 0.02em;
+  }
+  /* 預設收起來的長卡片：標題自己就是開關 */
+  .fold > summary { cursor: pointer; font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+  .fold[open] > summary { margin-bottom: 16px; }
+
+  form.search { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input[type=text] {
+    flex: 1 1 200px; min-width: 160px; font: inherit; font-size: 19px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 11px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--plane); color: var(--text-primary);
+  }
+  input[type=text]:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .ranges { display: flex; gap: 2px; background: var(--plane); border-radius: 10px; padding: 3px; }
+  .ranges label { position: relative; }
+  .ranges input { position: absolute; opacity: 0; pointer-events: none; }
+  .ranges span {
+    display: block; padding: 8px 14px; border-radius: 8px; font-size: 17px;
+    color: var(--text-secondary); cursor: pointer; user-select: none;
+  }
+  .ranges input:checked + span { background: var(--surface-1); color: var(--text-primary); font-weight: 600; }
+  .ranges input:focus-visible + span { outline: 2px solid var(--series-1); }
+  button.go {
+    font: inherit; font-weight: 600; font-size: 18px; padding: 11px 22px;
+    border: 0; border-radius: 10px; background: var(--series-1); color: #fff; cursor: pointer;
+  }
+  button.go:disabled { opacity: 0.45; cursor: default; }
+
+  .status-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    font-size: 16px; color: var(--text-secondary); margin-bottom: 14px;
+  }
+  .bar { flex: 1 1 120px; height: 4px; border-radius: 2px; background: var(--grid); overflow: hidden; min-width: 90px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--series-1); border-radius: 2px; transition: width .35s ease; }
+
+  svg { display: block; width: 100%; height: auto; }
+  .node-label { font-size: 27px; fill: var(--text-primary); font-weight: 550; }
+  .node-meta  { font-size: 19px; fill: var(--text-muted); }
+  /* 走勢圖的座標文字：深色模式白字、淺色模式黑字，不是灰的 */
+  .axis-txt { font-size: 15px; fill: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  /* 節點顏色由 data-status 決定，rect 與圖示都吃 currentColor，霓虹才有顏色可用 */
+  #flow g[data-status="pending"] { color: var(--text-muted); }
+  #flow g[data-status="running"] { color: var(--flow-run); }
+  #flow g[data-status="done"]    { color: var(--flow-done); }
+  #flow g[data-status="fail"]    { color: var(--critical); }
+  #flow g[data-status="root"]    { color: var(--series-1); }
+  #flow g[data-status="group"]   { color: var(--text-muted); }
+  #flow g > rect { fill: var(--surface-1); stroke: currentColor; stroke-width: 2.4; }
+  #flow g[data-status="pending"] > rect { stroke-width: 1; }
+  #flow g > text.ic { fill: currentColor; font-size: 25px; }
+
+  /* 霓虹管線：三層疊出來 —— 未點亮的暗管 + 模糊光暈 + 白熱核心，光束沿管跑 */
+  #flow .wire path { fill: none; stroke-linecap: round; }
+  #flow .wire .tube { stroke: var(--axis); stroke-width: 3; opacity: .3; }
+  #flow .wire .halo, #flow .wire .core { opacity: 0; }
+
+  #flow .wire[data-state="running"] .halo,
+  #flow .wire[data-state="running"] .core { opacity: 1; }
+  #flow .wire[data-state="running"] .tube {
+    stroke: var(--flow-run); opacity: .22;
+  }
+  #flow .wire .halo {
+    stroke: var(--flow-run); stroke-width: 9; stroke-dasharray: 17 83;
+    filter: blur(5px);
+    animation: beam 2.2s linear infinite;
+  }
+  #flow .wire .core {
+    stroke: var(--flow-core); stroke-width: 2.4; stroke-dasharray: 17 83;
+    filter: drop-shadow(0 0 4px var(--flow-run)) drop-shadow(0 0 10px var(--flow-run));
+    animation: beam 2.2s linear infinite;
+  }
+  @keyframes beam { from { stroke-dashoffset: 17; } to { stroke-dashoffset: -100; } }
+
+  #flow .wire[data-state="done"] .tube {
+    stroke: var(--flow-done); opacity: 1;
+    filter: drop-shadow(0 0 5px var(--flow-done)) drop-shadow(0 0 12px var(--flow-done));
+  }
+  #flow .wire[data-state="fail"] .tube {
+    stroke: var(--critical); opacity: 1; filter: drop-shadow(0 0 5px var(--critical));
+  }
+
+  /* 抓取中：輕微呼吸。抵達（完成/失敗）：霓虹閃爍一次 */
+  #flow g[data-status="running"] > rect { animation: breathe 1.5s ease-in-out infinite; }
+  @keyframes breathe {
+    0%, 100% { filter: drop-shadow(0 0 2px currentColor); }
+    50%      { filter: drop-shadow(0 0 8px currentColor); }
+  }
+  #flow g.arrive > rect { animation: neon 900ms ease-out 1; }
+  @keyframes neon {
+    0%   { filter: none; }
+    9%   { filter: drop-shadow(0 0 10px currentColor) drop-shadow(0 0 20px currentColor); }
+    20%  { filter: drop-shadow(0 0 1px currentColor); }
+    34%  { filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 24px currentColor); }
+    48%  { filter: drop-shadow(0 0 2px currentColor); }
+    64%  { filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 16px currentColor); }
+    100% { filter: none; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 1.1s linear infinite; transform-origin: center; transform-box: fill-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #flow .wire path, #flow g > rect, .spin { animation: none !important; }
+    #flow .wire[data-state="running"] .core { opacity: 1; stroke-dasharray: none; }
+  }
+
+  ul.log { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; }
+  ul.log li {
+    display: flex; gap: 10px; align-items: baseline; padding: 5px 0;
+    font-size: 16.5px; border-bottom: 1px solid var(--grid);
+  }
+  ul.log li:last-child { border-bottom: 0; }
+  .log .t { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 15px; }
+  .log .m { flex: 1; color: var(--text-secondary); }
+  .log .ms { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 15px; }
+  .ico { font-size: 16px; width: 14px; text-align: center; }
+  .ok { color: var(--good); } .warn { color: var(--warning); } .bad { color: var(--critical); }
+
+  .headline-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .headline-row .big { font-size: 36px; font-weight: 750; letter-spacing: -0.02em; }
+  .headline-row .co { color: var(--text-secondary); font-size: 18px; }
+  .meta { font-size: 16.5px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .evt { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid var(--grid); }
+  .evt:first-of-type { border-top: 0; }
+  .evt .when { width: 104px; flex-shrink: 0; }
+  .evt .when .d { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .evt .when .p { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .evt .body { flex: 1; min-width: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 9px; }
+  .chip {
+    font-size: 15px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-secondary);
+  }
+  .artlist { margin-top: 4px; }
+  details.art { margin-top: 0; }
+  /* 標題列整條上色：正面綠底、負面紅底，左側再加一條粗邊，不是只靠顏色 */
+  details.art[data-tone="positive"] > summary {
+    background: rgba(12,163,12,.14); border-left: 4px solid var(--good);
+  }
+  details.art[data-tone="negative"] > summary {
+    background: rgba(208,59,59,.14); border-left: 4px solid var(--critical);
+  }
+  details.art[data-tone="positive"] > summary:hover { background: rgba(12,163,12,.22); }
+  details.art[data-tone="negative"] > summary:hover { background: rgba(208,59,59,.22); }
+  details.art[data-tone="positive"][open] > summary,
+  details.art[data-tone="negative"][open] > summary { border-radius: 9px 9px 0 0; }
+  details.art > summary {
+    display: grid; grid-template-columns: 34px 1fr; gap: 0 10px;
+    padding: 10px 14px; color: var(--text-primary);
+    border-radius: 9px; border-left: 4px solid transparent;
+  }
+  details.art { border-bottom: 0; margin-bottom: 6px; }
+  details.art > summary::before { display: none; }
+  details.art > summary:hover .ttl { text-decoration: underline; text-decoration-color: var(--series-1); }
+  /* emoji 本身的顏色改不動（那是字型畫的），所以用底色圓章來區分正負 */
+  details.art .tone {
+    grid-row: span 2; font-size: 15px; line-height: 1;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1.5px solid; margin-top: 3px;
+  }
+  .tone.t-positive { background: rgba(12,163,12,.18); border-color: var(--good); }
+  .tone.t-negative { background: rgba(208,59,59,.18); border-color: var(--critical); }
+  .tone.t-neutral  { background: var(--plane); border-color: var(--border); }
+  details.art .ttl { font-size: 17.5px; line-height: 1.45; }
+  details.art .src { font-size: 15px; color: var(--text-muted); margin-top: 3px; }
+  details.art .artbody {
+    padding: 4px 14px 14px 48px; font-size: 17px; line-height: 1.65; color: var(--text-secondary);
+  }
+  details.art .artbody p { margin: 0 0 8px; }
+  details.art .artbody .nosum { color: var(--text-muted); }
+  details.art .artbody a { color: var(--series-1); font-size: 16.5px; text-decoration: none; }
+  details.art .artbody a:hover { text-decoration: underline; }
+  .nohit { font-size: 17px; color: var(--text-secondary); line-height: 1.6; }
+  .nohit em { font-style: normal; color: var(--warning); }
+
+  details { margin-top: 10px; }
+  details > summary {
+    cursor: pointer; font-size: 17px; color: var(--text-secondary);
+    padding: 9px 0; list-style: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--text-muted); }
+  details[open] > summary::before { content: "▾ "; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 16.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-muted); font-weight: 500; }
+
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px;
+    padding: 8px 11px; font-size: 16px; box-shadow: 0 6px 22px rgba(0,0,0,.28);
+    z-index: 60; font-variant-numeric: tabular-nums; max-width: 260px;
+  }
+  #tip .th { font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+  #tip .tr2 { color: var(--text-primary); }
+  .scoreboard { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 18px; }
+  .score {
+    flex: 1 1 120px; background: var(--plane); border: 1px solid var(--border);
+    border-radius: 11px; padding: 12px 14px;
+  }
+  .score .sv { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .score .sl { font-size: 15px; color: var(--text-muted); margin-top: 3px; }
+  .score.pos .sv { color: var(--good); }
+  .score.neg .sv { color: var(--critical); }
+  .score.mut .sv { color: var(--text-muted); }
+
+  .calnav { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .calnav button { background: var(--plane); border: 1px solid var(--border); color: var(--text-primary);
+    border-radius: 9px; padding: 8px 14px; font-size: 17px; cursor: pointer; font-family: inherit; }
+  .calnav .ym { font-size: 21px; font-weight: 700; }
+  .grid7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 20px; }
+  .grid7 .wd { text-align: center; font-size: 14px; color: var(--text-muted); padding-bottom: 4px; }
+  .cell { min-height: 62px; border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px;
+    background: var(--plane); }
+  .cell.blank { border: 0; background: none; }
+  .cell .dn { font-size: 15px; color: var(--text-secondary); }
+  .cell .dots { font-size: 12px; letter-spacing: 1px; line-height: 1.4; }
+  .callist { display: flex; flex-direction: column; gap: 8px; }
+  .calrow { display: grid; grid-template-columns: auto auto 1fr; gap: 12px; align-items: baseline;
+    padding: 10px 14px; border-radius: 10px; background: var(--plane); border: 1px solid var(--border); }
+  .calrow[data-impact="direct"] { border-color: var(--critical); }
+  .calrow[data-impact="unrelated"] { opacity: .55; }
+  .calrow .cd { font-size: 15px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .calrow .cn { font-size: 17px; font-weight: 650; }
+  .calrow .cnote { font-size: 14px; color: var(--text-muted); }
+  .overview { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .orow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px;
+    padding: 10px 14px; border-radius: 10px; background: var(--plane); border: 1px solid var(--border); }
+  .orow.me { border-color: var(--series-1); background: var(--surface-1); }
+  .olabel { font-size: 17px; font-weight: 650; }
+  .osym { font-size: 14px; color: var(--text-muted); }
+  .opct { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .market { border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+    border: 1px solid var(--border); background: var(--plane); }
+  .market[data-code="market"] { opacity: .72; }
+  .market[data-code="alpha"]   { border-color: var(--series-1); }
+  .market[data-code="counter"] { border-color: var(--warn, var(--series-1)); }
+  .mrow { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 6px; }
+  .mcell { font-size: 15px; color: var(--text-secondary); }
+  .mcell i { font-style: normal; font-weight: 650; margin-left: 4px; }
+  .mverdict { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+  /* 對照卡的判語是這張卡的結論，要讀得到。異動日那一長串裡的判語維持低調 */
+  #compare .mverdict { font-size: 15px; color: var(--neon-orange); }
+  #compare .market[data-code="market"] { opacity: 1; }
+  details.basics { border: 1px solid var(--border); border-radius: 13px; background: var(--surface-1); }
+  details.basics > summary { padding: 16px 18px; font-size: 19px; font-weight: 650; }
+  details.basics .bbody { padding: 0 18px 18px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .facts span { background: var(--plane); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px; font-size: 15px; }
+  .facts span b { font-weight: 650; color: var(--text-primary); }
+  .bbody h3 { font-size: 17px; margin: 16px 0 8px; }
+  .bbody p { font-size: 16px; line-height: 1.75; color: var(--text-secondary); margin: 0; }
+  .bbody ul { margin: 0; padding-left: 22px; }
+  .bbody li { font-size: 16px; line-height: 1.8; color: var(--text-secondary); }
+  /* 公司自述動輒上千字，不夾住的話整個兩欄區會被擠到螢幕外 */
+  .macro { display: flex; flex-direction: column; gap: 2px; }
+  .mrow { display: grid; grid-template-columns: 1fr auto auto 90px auto; align-items: center;
+    gap: 14px; padding: 8px 10px; border-radius: 8px; font-size: 15px; }
+  .mitem:nth-child(odd) { background: rgba(255,255,255,.03); border-radius: 8px; }
+  .mwhy { padding: 0 10px 8px 10px; font-size: 13px; line-height: 1.6; }
+  .mname { color: var(--text-secondary); }
+  .mval { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mchg { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .spark { width: 90px; height: 20px; }
+  .mdate { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  @media (max-width: 720px) { .mrow { grid-template-columns: 1fr auto; } .spark, .mdate { display: none; } }
+  .bbody p.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .bbody .more { margin-top: 8px; background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--series-1); font-size: 15px; font-family: inherit; }
+  .caveat { margin-top: 12px; font-size: 14px; color: var(--text-muted); }
+  details.explain { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 11px; padding: 0 14px; }
+  details.explain > summary { color: var(--series-1); font-weight: 600; }
+  .explainbody { font-size: 16.5px; line-height: 1.75; color: var(--text-secondary); padding-bottom: 14px; }
+  .explainbody p { margin: 0 0 10px; }
+  .explainbody ul { margin: 0 0 10px; padding-left: 20px; }
+  .explainbody li { margin-bottom: 5px; }
+  .explainbody code {
+    font-size: 15px; background: var(--plane); padding: 1px 6px;
+    border-radius: 5px; color: var(--text-primary);
+  }
+  .explainbody .warn-line { color: var(--warning); }
+
+  /* 左側工具列：預設展開。寬度只有這一個來源，.wrap 的左邊界也吃它 */
+  body { --rail-w: 72px; }
+  body[data-rail="1"] { --rail-w: 208px; }
+  .rail {
+    position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail-w); z-index: 30;
+    display: flex; flex-direction: column; gap: 8px; padding: 18px 8px;
+    background: var(--surface-1); border-right: 1px solid var(--border);
+    transition: width .18s ease;
+  }
+  body[data-rail="1"] .rail { box-shadow: 4px 0 24px rgba(0,0,0,.28); }
+  .railtoggle, .railbtn {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 12px 14px; border: 1px solid transparent; border-radius: 12px;
+    background: none; color: var(--text-secondary); cursor: pointer; font: inherit;
+    text-align: left; white-space: nowrap; overflow: hidden;
+  }
+  .railtoggle:hover, .railbtn:hover {
+    background: var(--plane); border-color: var(--border); color: var(--text-primary);
+  }
+  .railtoggle .ricon, .railbtn .ricon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+  .railtoggle .rlabel, .railbtn .rlabel { font-size: 16px; }
+  body:not([data-rail="1"]) .rlabel { display: none; }
+  .railitems { display: flex; flex-direction: column; gap: 8px; }
+  .railitems[hidden] { display: none; }
+
+  @media (max-width: 1080px) {
+    .rail {
+      right: 0; bottom: auto; width: auto; height: auto;
+      flex-direction: row; align-items: flex-start; padding: 10px 12px;
+      border-right: 0; border-bottom: 1px solid var(--border);
+    }
+    body[data-rail="1"] .rail { width: auto; }
+    .railtoggle, .railbtn { width: auto; }
+    .railitems { flex-direction: row; }
+  }
+
+  .modal {
+    position: fixed; inset: 0; z-index: 40; display: flex;
+    align-items: center; justify-content: center; padding: 28px;
+    background: rgba(0,0,0,.66);
+  }
+  .modal-box {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 16px;
+    width: min(1500px, 100%); height: min(880px, 100%); display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .modal-head h2 { margin: 0; font-size: 19px; font-weight: 650; }
+  .modal-sub { font-size: 14px; color: var(--text-muted); }
+  .modal-x {
+    margin-left: auto; background: none; border: 1px solid var(--border); border-radius: 9px;
+    color: var(--text-secondary); font: inherit; font-size: 16px; padding: 4px 12px; cursor: pointer;
+  }
+  .modal-x:hover { color: var(--text-primary); background: var(--plane); }
+  .modal-body { flex: 1; min-height: 0; overflow: auto; }
+  /* 撐滿整個彈窗只有 TradingView widget 需要，別的內容套上去會被壓扁 */
+  #heatBody > div, #heatBody iframe { width: 100% !important; height: 100% !important; }
+  #calBody { padding: 4px 2px; }
+
+  .cmp-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cmp-head h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+  .cmp-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+
+  /* ── 估值／恐慌指數按鈕（對照卡標題列）與彈窗 ───────────── */
+  .valu-btn {
+    background: none; border: 1px solid var(--neon-yellow); border-radius: 9px; cursor: pointer;
+    color: var(--neon-yellow); font: inherit; font-size: 15px; font-weight: 650; padding: 5px 13px;
+  }
+  .valu-btn:hover { background: var(--neon-yellow); color: #0d0d0d; }
+  #valuBody { padding: 22px 26px 30px; }
+  #valuBody h3 { margin: 26px 0 12px; font-size: 17px; font-weight: 650; }
+  #valuBody h3:first-child { margin-top: 0; }
+  /* 彈窗裡重用 idline 的區間條，只是放大 —— 同一個元件，學一次就全會看 */
+  /* 圓點 15px 騎在 7px 的軌道上，上下各凸出 4px —— 不留這段空間，下一行字會被壓到 */
+  #valuBody .rbar { flex: 0 0 auto; max-width: 620px; padding: 0 9px; margin-bottom: 14px; }
+  /* .spark 在總經卡是 90×20 的縮圖，這裡要當主圖看，寬高都得改寫 */
+  #valuBody .spark { width: 100%; height: 62px; }
+  #valuBody .rtitle { font-size: 14px; margin-bottom: 7px; }
+  #valuBody .rtrack { height: 7px; }
+  #valuBody .rdot { width: 15px; height: 15px; }
+  .bb-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  .bb-head b { font-size: 38px; line-height: 1.1; }
+  .bb-head span { font-size: 15px; color: var(--text-secondary); }
+  .bb-verdict { margin: 12px 0 4px; font-size: 17px; font-weight: 600; }
+  .bb-plot { position: relative; margin: 18px 0 6px; }
+  .bb-line { display: block; width: 100%; height: 108px; }
+  .bb-tag { position: absolute; right: 0; font-size: 12.5px; color: var(--text-muted);
+    background: var(--surface-1); padding: 0 4px; font-variant-numeric: tabular-nums; }
+  .bb-tag.hi { top: -2px; } .bb-tag.lo { bottom: -2px; }
+  .bb-yield { margin: 10px 0 2px; padding: 9px 12px; border-radius: 9px; background: var(--plane);
+    font-size: 15px; font-variant-numeric: tabular-nums; }
+  .bb-yield b { font-size: 19px; color: var(--neon-yellow); }
+  .bb-ends { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+  .pe-trap {
+    margin: 10px 0 4px; padding: 12px 14px; border-radius: 10px;
+    border-left: 3px solid var(--warning); background: var(--plane);
+    font-size: 15px; line-height: 1.75; color: var(--text-secondary);
+  }
+  .pe-trap strong { color: var(--warning); }
+  .valu-years { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .valu-years > label { font-size: 14px; color: var(--text-muted); }
+  .valu-years .ranges span { padding: 7px 13px; font-size: 15.5px; }
+  .valu-years input:checked + span { color: var(--neon-yellow); }
+  .pespark { position: relative; max-width: 620px; margin-top: 10px; cursor: crosshair;
+    touch-action: none; }
+  .pespark svg { display: block; width: 100%; height: 72px; }
+  .pespark .pk-x, .pespark .pk-dot { opacity: 0; transition: opacity .12s; }
+  .pespark.pk-on .pk-x, .pespark.pk-on .pk-dot { opacity: 1; }
+  .pespark .pk-dot { position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--neon-yellow); box-shadow: 0 0 0 2px var(--surface-1), 0 0 8px 2px var(--neon-yellow);
+    transform: translate(-50%, -50%); pointer-events: none; }
+  .pk-ends { display: flex; justify-content: space-between; font-size: 11.5px;
+    color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .pk-read { margin-top: 7px; font-size: 14px; color: var(--text-secondary);
+    min-height: 21px; font-variant-numeric: tabular-nums; }
+  .pk-read b { color: var(--text-primary); }
+
+  #trendChart svg { width: 100%; height: auto; display: block; }
+#trendChart { cursor: crosshair; touch-action: none; user-select: none; }
+#trendChart .tr-xlab { font-size: 13px; fill: var(--text-secondary); }
+#trendChart .tr-today-lab { font-size: 12px; fill: var(--text-primary); opacity: .75; }
+#trendRead { margin-top: 6px; color: var(--warning); }
+#trendRead b { color: var(--warning); }
+.trend-legend .lg-future { height: 0; border-top: 2px dashed var(--warning); }
+.trend-legend .lg-today { height: 12px; width: 0; border-left: 2px dashed var(--text-primary); }
+  .trend-legend { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px;
+    font-size: 13px; color: var(--text-secondary); }
+  .trend-legend i { display: inline-block; width: 18px; margin-right: 7px; vertical-align: middle; }
+  .trend-legend .lg-band { height: 10px; border-radius: 3px; background: var(--warning); }
+  .trend-legend .lg-in { opacity: .28; }
+  .trend-legend .lg-out { opacity: .12; }
+  .trend-legend .lg-dash { height: 0; border-top: 2px dashed var(--warning); opacity: .85; }
+  .trend-legend .lg-mark { height: 12px; width: 0; border-left: 1px solid var(--text-muted); }
+  .pk-read em { font-style: normal; color: var(--neon-yellow); }
+  .valu-now { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; }
+  .valu-now > b { font-size: 34px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .valu-now span { font-size: 15px; color: var(--text-muted); }
+  .valu-now span b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .valu-split { display: flex; flex-direction: column; gap: 9px; max-width: 620px; }
+  .valu-line { display: grid; grid-template-columns: 116px 1fr 86px; align-items: center; gap: 12px;
+    font-size: 15px; }
+  .valu-line .vl { color: var(--text-secondary); }
+  .valu-line .vt { height: 13px; border-radius: 99px; background: var(--plane); overflow: hidden; }
+  .valu-line .vt i { display: block; height: 100%; border-radius: 99px; }
+  .valu-line .vn { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .qa { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-width: 900px; }
+  .qa-row { display: grid; grid-template-columns: 26px 200px 96px 1fr; gap: 12px; align-items: baseline;
+    background: var(--plane); border-radius: 10px; padding: 11px 14px; font-size: 14.5px; }
+  .qa-row .qm { font-size: 18px; line-height: 1; }
+  .qa-row .qk { color: var(--text-primary); font-weight: 600; }
+  .qa-row .qv { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  .qa-row .qt { color: var(--text-secondary); line-height: 1.55; }
+  .qa-row .qb { font-style: normal; font-size: 12.5px; color: var(--text-muted);
+    font-variant-numeric: tabular-nums; }
+  @media (max-width: 720px) { .qa-row { grid-template-columns: 26px 1fr; } .qa-row .qv { text-align: left; } }
+  .qa-sum { font-size: 15.5px; line-height: 1.7; margin-bottom: 14px; }
+  .fair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 620px; }
+  .fair-cell { background: var(--plane); border-radius: 10px; padding: 12px 14px; }
+
+  .fair-cell .fv { font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .fair-cell .fk { font-weight: 650; color: var(--text-primary); font-size: 14px; }
+  .fair-cell .fs { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  /* 這兩個數字是整段的前提，其他全部從它們算出來 —— 要一眼找得到 */
+  .caveat b.hot { color: var(--neon-yellow); font-size: 1.12em; font-weight: 750; }
+  .valu-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
+  .valu-cell { background: var(--plane); border-radius: 10px; padding: 11px 12px; }
+  .valu-cell .vy { font-size: 13px; color: var(--text-muted); }
+  .valu-cell .vv { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .valu-cell .vs { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  /* ── 大盤／板塊對照表、回購年度表、資金流向 ──────────────── */
+  .cmp-row, .grid4, .rot-row { display: grid; align-items: baseline; gap: 12px;
+    padding: 7px 10px; border-radius: 7px; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .cmp-row { grid-template-columns: minmax(160px, 1fr) 110px 120px; max-width: 560px; }
+  .cmp-me { font-size: 19px; font-weight: 650; margin: 2px 0 10px; }
+  .cmp-row .c1 { font-weight: 600; }
+  .cmp-row .c2 { color: var(--text-muted); font-weight: 400; }
+  .cmp-row:nth-child(even) { background: rgba(255,255,255,.03); }
+  .cmp-row .num { text-align: right; }
+  .grid4 { grid-template-columns: 1fr 120px 130px 110px; }
+  .grid4.hd, .rot-row.hd { font-size: 13px; color: var(--text-muted); padding-bottom: 2px; }
+  .grid4:nth-child(even), .rot-row:nth-child(even) { background: rgba(255,255,255,.03); }
+  .grid4 .num, .grid4.hd span { text-align: right; }
+  .rot-row.me { border-left: 3px solid var(--series-1); background: var(--surface-1); }
+  .rot-row { grid-template-columns: 116px 1fr 76px; }
+  .rot-bar { display: flex; align-items: center; height: 12px; background: var(--plane); border-radius: 99px; }
+  .rot-bar i { display: block; height: 100%; border-radius: 99px; }
+  .etf { color: var(--text-muted); border-bottom: 1px dotted currentColor; cursor: help; }
+  .etf-tip {
+    position: fixed; z-index: 60; width: 300px; max-height: 340px; overflow: auto;
+    padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface-1); box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    font-size: 14px; line-height: 1.6; pointer-events: none;
+  }
+  .etf-tip h4 { margin: 0 0 8px; font-size: 15px; color: var(--neon-yellow); }
+  .etf-tip .hrow { display: grid; grid-template-columns: 56px 1fr 52px; gap: 8px;
+    font-variant-numeric: tabular-nums; }
+  .etf-tip .hrow b { font-weight: 650; }
+  .etf-tip .hrow span:last-child { text-align: right; color: var(--text-muted); }
+  .etf-tip .loading { padding: 4px 0; font-size: 14px; }
+  .etf-tip .hname { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+
+  .rot-risk { margin: 6px 0; padding: 9px 12px; border-radius: 9px; background: var(--plane); }
+  .rot-risk b { font-size: 15px; }
+  .rot-verdict { margin: 14px 0 6px; font-size: 17px; font-weight: 600; line-height: 1.6; }
+  .rot-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 2px; }
+  .rot-head h3, .rot-h { margin: 0; color: var(--neon-yellow); font-size: 19px; }
+  .rot-h { margin-top: 24px; }
+  #rotRanges span { padding: 6px 11px; font-size: 14.5px; }
+  #rotRanges input:checked + span { color: var(--neon-yellow); }
+
+  /* ── 注意力溫度計 ────────────────────────────────────── */
+  /* ── 恐慌指數彈窗 ───────────────────────────────────── */
+  /* 置中要用 align-self，不能用 margin auto —— flex 項目一設 auto margin 就縮成內容寬度，max-width 白寫 */
+  #vixBody { padding: 16px 22px 22px; width: min(1220px, 100%); align-self: center; }
+  .vix-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 28px; margin-bottom: 6px; }
+  .vix-head .chart-ranges { margin-left: auto; margin-bottom: 0; }
+  .vix-stat .vs-k { font-size: 13px; color: var(--text-muted); margin-bottom: 2px; }
+  .vix-stat .vs-v { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .vix-stat .vs-v small { font-size: 13px; font-weight: 500; margin-left: 8px; color: var(--text-secondary); }
+  #vixChart svg { width: 100%; height: auto; display: block; }
+  /* VIX 是背景資訊，右軸刻度不該跟左軸的股價一樣搶眼 */
+  .vix-tick { fill: var(--warning); opacity: .55; }
+  .vix-legend { display: flex; flex-wrap: wrap; gap: 22px; font-size: 13.5px;
+    color: var(--text-secondary); margin-top: 2px; }
+  .vix-legend em { font-style: normal; color: var(--text-muted); }
+  .vix-legend i { display: inline-block; width: 18px; margin-right: 7px; vertical-align: middle; }
+  .vix-legend .lg-line { height: 3px; border-radius: 2px; }
+  .vix-legend .lg-area { height: 10px; border-radius: 3px; background: var(--warning); opacity: .3;
+    border-top: 1px solid var(--warning); }
+  .vix-verdict { margin: 16px 0 12px; font-size: 16px; line-height: 1.7;
+    background: var(--plane); border-radius: 11px; padding: 13px 16px; }
+
+  .att-plot { display: flex; gap: 8px; margin-top: 12px; }
+  .att-yaxis {
+    position: relative; width: 30px; flex: 0 0 auto; height: 108px;
+    font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  }
+  .att-yaxis span { position: absolute; right: 0; transform: translateY(50%); }
+  .att-bars {
+    position: relative; flex: 1; display: flex; align-items: flex-end; gap: 3px; height: 108px;
+  }
+  .att-bars i { flex: 1; border-radius: 3px 3px 0 0; min-height: 2px; display: block; }
+  .att-bars .att-grid {
+    position: absolute; left: 0; right: 0; height: 0; min-height: 0; flex: none;
+    border-top: 1px dashed var(--grid);
+  }
+  .att-axis { display: flex; gap: 3px; margin: 4px 0 0 38px; font-size: 10.5px; color: var(--text-muted); }
+  .att-axis span { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+  .att-note { margin: 10px 0 0; }
+  .att-note .explainbody { font-size: 14.5px; }
+
+  .loading { font-size: 16px; color: var(--text-muted); padding: 40px 0; text-align: center; }
+  .hidden { display: none; }
+  .err { color: var(--critical); font-size: 17.5px; line-height: 1.6; }
+</style>
+</head>
+<body data-rail="1">
+<nav class="rail" id="rail" aria-label="工具列">
+  <button type="button" class="railtoggle" id="railToggle" aria-expanded="true" aria-controls="railItems">
+    <span class="ricon" aria-hidden="true">☰</span>
+    <span class="rlabel">工具</span>
+  </button>
+  <div class="railitems" id="railItems">
+    <button type="button" class="railbtn" id="btnHeat">
+      <span class="ricon" aria-hidden="true">🗺️</span>
+      <span class="rlabel">美股 Heatmap</span>
+    </button>
+    <button type="button" class="railbtn" id="btnCal">
+      <span class="ricon" aria-hidden="true">📅</span>
+      <span class="rlabel">本月行事曆</span>
+    </button>
+    <button type="button" class="railbtn" id="btnRot">
+      <span class="ricon" aria-hidden="true">🔀</span>
+      <span class="rlabel">資金流向</span>
+    </button>
+  </div>
+</nav>
+
+<div class="modal hidden" id="heatModal" role="dialog" aria-modal="true" aria-labelledby="heatTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="heatTitle">美股 Heatmap</h2>
+      <span class="modal-sub">方塊大小＝市值，顏色＝當日漲跌，依產業分組</span>
+      <button type="button" class="modal-x" id="heatClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="heatBody"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="calModal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="calTitle">要注意的日子</h2>
+      <span class="modal-sub">🔴 跟你查的股票直接相關　🟡 全市場都受影響　⚪ 關聯低</span>
+      <button type="button" class="modal-x" id="calClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="calBody"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="valuModal" role="dialog" aria-modal="true" aria-labelledby="valuTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="valuTitle">估值</h2>
+      <span class="modal-sub">現在的價格，跟這家公司自己的過去比</span>
+      <button type="button" class="modal-x" id="valuClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="valuBody"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="rotModal" role="dialog" aria-modal="true" aria-labelledby="rotTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="rotTitle">資金流向</h2>
+      <span class="modal-sub">市場的錢是一袋。這裡看它正在從哪一格搬到哪一格</span>
+      <button type="button" class="modal-x" id="rotClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="rotBody"></div>
+  </div>
+</div>
+
+<div class="etf-tip hidden" id="etfTip" role="tooltip"></div>
+
+<div class="modal hidden" id="vixModal" role="dialog" aria-modal="true" aria-labelledby="vixTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="vixTitle">恐慌指數 vs 股價</h2>
+      <span class="modal-sub">VIX 高＝市場在花錢買保險</span>
+      <button type="button" class="modal-x" id="vixClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="vixBody"></div>
+  </div>
+</div>
+
+<div class="viz-root"><div class="wrap">
+
+  <header>
+    <h1>News Radar</h1>
+    <span class="sub">輸入代號 · 散出去抓 · 只留下值得看的</span>
+    <button id="theme" type="button">切換淺色</button>
+  </header>
+
+  <div class="card">
+    <form class="search" id="form">
+      <input type="text" id="sym" placeholder="NVDA" autocomplete="off" spellcheck="false" required>
+      <button class="go" id="go" type="submit">搜尋</button>
+    </form>
+  </div>
+
+  <div class="card hidden" id="flowCard">
+    <div class="status-bar">
+      <span id="flowTitle">準備中</span>
+      <span class="bar"><i id="barFill"></i></span>
+      <span id="flowCount">0/0</span>
+      <span id="elapsed">0.0s</span>
+    </div>
+    <svg id="flow" viewBox="0 0 900 300" role="img" aria-label="資料抓取流程圖"></svg>
+    <details><summary>即時日誌</summary><ul class="log" id="log"></ul></details>
+  </div>
+
+  <div class="cols tall">
+    <div class="card hidden" id="chartCard">
+      <div class="quote" id="quote"></div>
+      <div class="ranges chart-ranges" id="chartRanges" role="group" aria-label="走勢圖時間區間"></div>
+      <div id="chart"></div>
+    </div>
+    <div id="compare"></div>
+  </div>
+
+  <div class="cols">
+    <div id="basics"></div>
+    <div id="buyback"></div>
+  </div>
+
+  <div class="cols">
+    <div id="summary"></div>
+    <div id="attention"></div>
+  </div>
+
+  <div id="out"></div>
+
+</div></div>
+<div id="tip"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const NS = "http://www.w3.org/2000/svg";
+const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+/* ---------- 主題 ---------- */
+$("#theme").onclick = () => {
+  const dark = document.documentElement.dataset.theme !== "light";
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  $("#theme").textContent = dark ? "切換深色" : "切換淺色";
+  if (state.report) render(state.report);
+};
+
+/* ---------- 流程圖：建一次，之後只改狀態（重畫會打斷 CSS 動畫） ---------- */
+const state = { tasks: new Map(), t0: 0, timer: null, report: null, pending: [] };
+
+// API 常常 300ms 就回來，動畫根本來不及看。讓每條線至少流動這麼久再收尾。
+const FLOW_MIN_MS = 1500;
+
+function defer(id, fn) {
+  const t = state.tasks.get(id);
+  const wait = Math.max(0, FLOW_MIN_MS - (Date.now() - (t?.startedAt ?? Date.now())));
+  state.pending.push(setTimeout(fn, wait));
+  return wait;
+}
+
+function clearPending() {
+  state.pending.forEach(clearTimeout);
+  state.pending = [];
+}
+const STATE_ICON = { pending: "·", running: "◐", done: "✓", fail: "✕" };
+const NODE_W = 190, NODE_GAP = 12, NODE_H = 98;
+// 三排節點在畫布高度上的位置比例。畫布高度是算出來的，不是寫死的 —— 見 flowHeight()
+const ROW_AT = [0.12, 0.45, 0.78];
+
+// viewBox 的長寬比若跟容器不一樣，SVG 會置中留白（就是上下各一塊黑的來源）。
+// 寬度由任務數決定，所以高度必須反推成「跟容器同比例」，才會剛好填滿。
+function flowHeight(w) {
+  const box = $("#flow").getBoundingClientRect();
+  const wanted = box.width > 0 ? w * box.height / box.width : w / 2.4;
+  // 容器再矮，兩排之間也要塞得下一個節點的高度，否則框框會疊在一起
+  return Math.max(wanted, NODE_H * 1.6 / (ROW_AT[1] - ROW_AT[0]));
+}
+
+function buildFlow(symbol, days, tasks) {
+  const svg = $("#flow");
+  svg.innerHTML = "";
+  const edges = el("g"), nodes = el("g");
+  svg.append(edges, nodes);
+
+  const groups = [...new Set(tasks.map(t => t.group))];
+  // 任務先在最底下那排平均排開，群組節點再落在自己任務的正中間 —— 這樣不會互相疊到
+  const ordered = groups.flatMap(g => tasks.filter(t => t.group === g));
+  // 畫布寬度跟著任務數長，加來源時框框不會被擠到重疊
+  const W = ordered.length * (NODE_W + NODE_GAP);
+  const H = flowHeight(W);
+  const [ROOT_Y, GROUP_Y, TASK_Y] = ROW_AT.map(r => r * H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const tx = new Map(ordered.map((t, i) => [t.id, W * (i + 0.5) / ordered.length]));
+  const gx = groups.map(g => {
+    const xs = tasks.filter(t => t.group === g).map(t => tx.get(t.id));
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+  });
+
+  nodes.appendChild(mkNode("root", W / 2, ROOT_Y, symbol, `近 ${days} 天`, "root"));
+
+  groups.forEach((g, gi) => {
+    edges.appendChild(mkEdge("eg-" + gi, W / 2, ROOT_Y + NODE_H / 2, gx[gi], GROUP_Y - NODE_H / 2));
+    nodes.appendChild(mkNode("gn-" + gi, gx[gi], GROUP_Y, g, "", "group"));
+    for (const t of tasks.filter(t => t.group === g)) {
+      const x = tx.get(t.id);
+      edges.appendChild(mkEdge("e-" + t.id, gx[gi], GROUP_Y + NODE_H / 2, x, TASK_Y - NODE_H / 2));
+      nodes.appendChild(mkNode("n-" + t.id, x, TASK_Y, t.label, "等待中", "pending"));
+      state.tasks.set(t.id, { ...t, gi, status: "pending" });
+    }
+  });
+
+  svg.appendChild(el("text", { id: "srcline", x: W / 2, y: TASK_Y + NODE_H, "text-anchor": "middle", class: "node-meta" }));
+}
+
+function mkNode(id, cx, cy, label, meta, status) {
+  const w = NODE_W, h = NODE_H;
+  const g = el("g", { id, "data-status": status });
+  g.appendChild(el("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx: 14 }));
+
+  const ic = el("text", { class: "ic", x: cx - w / 2 + 24, y: cy + 8, "text-anchor": "middle" });
+  ic.textContent = STATE_ICON[status] || "";
+  g.appendChild(ic);
+
+  const ox = status in STATE_ICON ? 14 : 0;
+  const a = el("text", { class: "node-label", x: cx + ox, y: meta ? cy - 8 : cy + 10, "text-anchor": "middle" });
+  a.textContent = label.length > 11 ? label.slice(0, 10) + "…" : label;
+  const b = el("text", { class: "node-meta", x: cx + ox, y: cy + 24, "text-anchor": "middle" });
+  b.textContent = meta;
+  g.append(a, b);
+  return g;
+}
+
+function mkEdge(id, x1, y1, x2, y2) {
+  const my = (y1 + y2) / 2;
+  const d = `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+  const g = el("g", { id, class: "wire", "data-state": "pending" });
+  // pathLength=100 讓虛線長度用百分比算，不同長度的線光束看起來一樣快
+  for (const cls of ["tube", "halo", "core"]) {
+    g.appendChild(el("path", { class: cls, d, pathLength: 100 }));
+  }
+  return g;
+}
+
+function setTask(id, status, meta) {
+  const t = state.tasks.get(id);
+  if (!t) return;
+  t.status = status;
+
+  const g = document.getElementById("n-" + id);
+  g.setAttribute("data-status", status);
+  const ic = g.querySelector(".ic");
+  ic.textContent = STATE_ICON[status] || "";
+  ic.classList.toggle("spin", status === "running");
+  g.querySelector(".node-meta").textContent = meta;
+
+  if (status === "done" || status === "fail") {
+    g.classList.remove("arrive");
+    requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("arrive")));
+  }
+
+  document.getElementById("e-" + id).setAttribute("data-state", status);
+
+  const sibs = [...state.tasks.values()].filter(x => x.gi === t.gi);
+  const groupState = sibs.some(x => x.status === "running") ? "running"
+    : sibs.some(x => x.status === "fail") ? "fail"
+      : sibs.every(x => x.status === "done") ? "done" : "pending";
+  document.getElementById("eg-" + t.gi).setAttribute("data-state", groupState);
+
+  const done = sibs.length && [...state.tasks.values()].filter(x => x.status === "done" || x.status === "fail").length;
+  $("#flowCount").textContent = `${done}/${state.tasks.size}`;
+  $("#barFill").style.width = (done / state.tasks.size * 100) + "%";
+}
+
+function log(icon, cls, msg, ms) {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="t">${new Date().toLocaleTimeString("en-GB")}</span>`
+    + `<span class="ico ${cls}">${icon}</span><span class="m">${esc(msg)}</span>`
+    + `<span class="ms">${ms != null ? ms + "ms" : ""}</span>`;
+  $("#log").prepend(li);
+}
+
+/* ---------- 搜尋 ---------- */
+$("#form").onsubmit = e => { e.preventDefault(); run(); };
+
+function run() {
+  const symbol = $("#sym").value.trim().toUpperCase();
+  const days = newsDays;
+  if (!symbol) return;
+
+  clearPending();
+  state.tasks.clear(); state.report = null; state.t0 = Date.now();
+  $("#log").innerHTML = ""; $("#out").innerHTML = ""; $("#basics").innerHTML = ""; $("#compare").innerHTML = "";
+  $("#summary").innerHTML = ""; $("#attention").innerHTML = ""; closeValu(); closeVix();
+  $("#flowCard").classList.add("hidden");
+  $("#go").disabled = true;
+
+  chart.symbol = symbol; chart.name = ""; chart.logo = ""; chart.sector = ""; chart.basics = null; chart.data = null;
+  $("#chartCard").classList.remove("hidden");
+  $("#quote").innerHTML = `<div><span class="sym">${esc(symbol)}</span></div>`;
+  loadChart(chart.range);
+
+  $("#flowTitle").textContent = `${symbol} · 近 ${days} 天`;
+  $("#flowCount").textContent = "0/0";
+  $("#barFill").style.width = "0%";
+  clearInterval(state.timer);
+  state.timer = setInterval(() => {
+    $("#elapsed").textContent = ((Date.now() - state.t0) / 1000).toFixed(1) + "s";
+  }, 100);
+
+  const src = new EventSource(`/api/search?symbol=${encodeURIComponent(symbol)}&days=${days}`);
+  src.onmessage = ev => handle(JSON.parse(ev.data), src);
+  src.onerror = () => { stop(src); log("✕", "bad", "連線中斷"); };
+}
+
+function stop(src) { src.close(); clearInterval(state.timer); $("#go").disabled = false; }
+
+function handle(ev, src) {
+  const label = id => state.tasks.get(id)?.label ?? id;
+  switch (ev.type) {
+    case "plan":
+      $("#flowCard").classList.remove("hidden");
+      buildFlow(ev.symbol, ev.days, ev.tasks);
+      $("#flowCount").textContent = `0/${ev.tasks.length}`;
+      break;
+    case "task_start": {
+      const t = state.tasks.get(ev.id);
+      if (t) t.startedAt = Date.now();
+      setTask(ev.id, "running", "抓取中…");
+      log("◐", "", `${ev.label} 開始`);
+      break;
+    }
+    case "task_done":
+      defer(ev.id, () => setTask(ev.id, "done", `${ev.count} 筆 · ${ev.ms}ms`));
+      log("✓", "ok", `${label(ev.id)} — ${ev.count} 筆`, ev.ms);
+      break;
+    case "task_fail":
+      defer(ev.id, () => setTask(ev.id, "fail", "失敗"));
+      log("✕", "bad", `${label(ev.id)} — ${ev.error}`, ev.ms);
+      break;
+    case "sources": {
+      const line = document.getElementById("srcline");
+      if (line) line.textContent = "來源分佈   " + ev.items.slice(0, 6).map(([n, c]) => `${n} ${c}`).join("    ");
+      log("✓", "ok", `合併 ${ev.items.length} 個來源`);
+      break;
+    }
+    case "cached":
+      log("✓", "ok", `使用 ${ev.age}s 前的快取，未重新抓取`);
+      break;
+    case "result": {
+      state.report = ev.report;
+      const waits = [...state.tasks.values()]
+        .map(t => Math.max(0, FLOW_MIN_MS - (Date.now() - (t.startedAt ?? Date.now()))));
+      state.pending.push(setTimeout(() => render(ev.report), Math.max(0, ...waits, 0) + 350));
+      stop(src);
+      break;
+    }
+    case "error":
+      $("#out").innerHTML = `<div class="card"><div class="err">✕ ${esc(ev.message)}</div></div>`;
+      stop(src);
+      break;
+  }
+}
+
+/* ---------- 結果 ---------- */
+function allArticles(r) {
+  const seen = new Map();
+  for (const a of [...r.events.flatMap(e => e.articles), ...r.other.analyst, ...r.other.routine]) {
+    seen.set(a.headline, a);
+  }
+  return [...seen.values()].sort((x, y) => y.ts.localeCompare(x.ts));
+}
+
+const bigMoney = v => {
+  if (!v) return "";
+  if (v >= 1e12) return (v / 1e12).toFixed(2) + " 兆美元";
+  return (v / 1e8).toFixed(0) + " 億美元";
+};
+
+function basicsHTML(r) {
+  const b = r.basics || {};
+  if (!b.sector && !b.summary) return "";
+  const facts = [
+    b.sector_label && `產業大類 <b>${esc(b.sector_label)}</b>`,
+    b.industry && `細分 <b>${esc(b.industry)}</b>`,
+    b.market_cap && `市值 <b>${bigMoney(b.market_cap)}</b>`,
+    b.employees && `員工 <b>${b.employees.toLocaleString()}</b> 人`,
+    b.country && `總部 <b>${esc(b.country)}</b>`,
+    b.pe && `本益比 <b>${b.pe.toFixed(1)}</b>`,
+    b.dividend_yield && `股息殖利率 <b>${b.dividend_yield.toFixed(2)}%</b>`,
+    b.beta && `Beta <b>${b.beta.toFixed(2)}</b>`,
+  ].filter(Boolean);
+
+  return `<details class="basics" open>
+    <summary>🏢 ${esc(r.name)} 的基本資料（點我展開）</summary>
+    <div class="bbody">
+      <div class="facts">${facts.map(f => `<span>${f}</span>`).join("")}</div>
+      ${b.summary ? `<h3>靠什麼賺錢</h3><p class="clamp">${esc(b.summary)}</p>
+        <button type="button" class="more" onclick="this.previousElementSibling.classList.toggle('clamp');
+          this.textContent = this.previousElementSibling.classList.contains('clamp') ? '看完整描述 ▾' : '收合 ▴'">看完整描述 ▾</button>
+        <div class="caveat">這段是 Yahoo Finance 提供的公司自述原文（英文），沒有翻譯，也沒有經過任何加工。</div>` : ""}
+      ${b.drivers.length ? `<h3>股價通常被這些大環境因素推著走</h3>
+        <ul>${b.drivers.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+      <div id="macro"></div>
+      ${b.website ? `<div class="caveat"><a href="${esc(b.website)}" target="_blank" rel="noopener">公司官網 ↗</a></div>` : ""}
+    </div>
+  </details>`;
+}
+
+// risingIsGood=false 給本益比用：本益比往上是「變貴」，不該畫成綠色
+function sparkSVG(vals, risingIsGood = true) {
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1) * 100).toFixed(2)},${(20 - (v - lo) / span * 18).toFixed(2)}`);
+  const up = vals[vals.length - 1] >= vals[0];
+  return `<svg class="spark" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts.join(" ")}" fill="none" stroke="${up === risingIsGood ? "var(--good)" : "var(--critical)"}" stroke-width="1.2"/>
+  </svg>`;
+}
+
+function macroHTML(d) {
+  if (!d.rows.length) return "";
+  const row = m => {
+    const c = m.change, arrow = c === null ? "→" : c > 0 ? "▲" : c < 0 ? "▼" : "→";
+    // 顏色跟著「對這個產業是好是壞」走，不是跟著數字大小走 —— 失業率往上不該是綠的
+    const color = c ? (m.effect.good ? "var(--good)" : "var(--critical)") : "var(--text-muted)";
+    const e = m.effect;
+    const why = e
+      ? `<div class="mwhy" style="color:${e.good ? "var(--good)" : "var(--critical)"}">
+           ${e.good ? "✅ 對這家公司偏正向" : "❌ 對這家公司偏負面"}：${esc(e.text)}</div>`
+      : `<div class="mwhy" style="color:var(--text-muted)">➖ 這半年幾乎沒動，看不出方向</div>`;
+    return `<div class="mitem"><div class="mrow">
+      <span class="mname">${esc(m.name)}</span>
+      <span class="mval">${m.value}${esc(m.unit === "%" ? "%" : " " + m.unit)}</span>
+      <span class="mchg" style="color:${color}">${arrow} 近${d.months}月 ${c === null ? "—" : (c > 0 ? "+" : "") + c}</span>
+      ${sparkSVG(m.spark, m.rising_good)}
+      <span class="mdate">${esc(m.date)}</span>
+    </div>${why}</div>`;
+  };
+  return `<h3>這些因素現在的數字（FRED 美國聯準會資料庫）</h3>
+    <div class="macro">${d.rows.map(row).join("")}</div>
+    <div class="caveat">✅ / ❌ 判斷的是<strong>這半年的變化方向</strong>對「${esc(d.sector_label || "這個產業")}」這個<strong>產業</strong>是好是壞，
+      規則寫在 <code>FRED_EFFECT</code>，同一個指標對不同產業可能相反（升息壓垮多數公司，銀行保險反而賺更多）。
+      它說的是產業的通則，不是這家公司的個別狀況，也不是股價會漲會跌的預測。</div>`;
+}
+
+function loadMacro(sector) {
+  $("#macro").innerHTML = `<div class="nohit">讀取總體經濟指標…</div>`;
+  fetch(`/api/macro?sector=${encodeURIComponent(sector)}`).then(r => r.json()).then(d => {
+    if (d.error) throw new Error(d.error);
+    $("#macro").innerHTML = macroHTML(d);
+  }).catch(err => {
+    $("#macro").innerHTML = `<div class="err">✕ FRED 指標載入失敗：${esc(err.message)}</div>`;
+  });
+}
+
+function render(r) {
+  const okSrc = [...state.tasks.values()].filter(t => t.status === "done").length;
+  const all = allArticles(r);
+  const n = s => all.filter(a => a.sentiment === s).length;
+
+  if (chart.symbol === r.symbol) {
+    chart.name = r.name; chart.logo = r.logo; chart.sector = r.basics.sector || ""; chart.basics = r.basics;
+    renderQuote(); loadCompare();
+  }
+
+  $("#basics").innerHTML = basicsHTML(r);
+  if ($("#macro")) loadMacro(r.basics.sector || "");
+
+  $("#summary").innerHTML = `
+    <div class="card">
+      <div class="headline-row">
+        <span class="big sym">${esc(r.symbol)}</span>
+        <span class="co">${esc(r.name)}${r.industry ? " · " + esc(r.industry) : ""}</span>
+      </div>
+      <div class="meta">近 ${r.days} 天 · ${okSrc}/${state.tasks.size} 個來源成功</div>
+      <div class="scoreboard">
+        <div class="score"><div class="sv">${all.length}</div><div class="sl">抓到的新聞</div></div>
+        <div class="score pos"><div class="sv">👍 ${n("positive")}</div><div class="sl">正面</div></div>
+        <div class="score neg"><div class="sv">👎 ${n("negative")}</div><div class="sl">負面</div></div>
+        <div class="score mut"><div class="sv">▪️ ${n("neutral")}</div><div class="sl">中性（已隱藏）</div></div>
+      </div>
+      ${coverageNote(r)}
+    </div>`;
+
+  $("#out").innerHTML = `
+    ${newsHTML(r, all)}
+
+    ${r.failures.length ? `<div class="card"><h2>⚠️ 這次沒抓到的</h2>${
+      r.failures.map(f => `<div class="nohit"><em>✕</em> ${esc(f.id)} — ${esc(f.error)}</div>`).join("")
+    }<div class="nohit" style="margin-top:8px;color:var(--text-muted)">本報告不完整，判讀時請注意。</div></div>` : ""}
+  `;
+
+  if (chart.symbol === r.symbol) loadAttention();
+}
+
+function newsHTML(r, all) {
+  // 掛在異動日底下的新聞不再重複列一次。分開兩張卡的時候同一則會出現兩遍，
+  // 讀的人以為是兩件事。
+  const shown = new Set(r.events.flatMap(e => e.articles.map(a => a.headline)));
+  const rest = all.filter(a => a.sentiment !== "neutral" && !shown.has(a.headline));
+  const neutral = all.filter(a => a.sentiment === "neutral").length;
+
+  return `<details class="card fold">
+    <summary>股價異動日 × 新聞對照（${r.events.length} 天）</summary>
+    <div class="meta">單日漲跌超過 ${r.threshold}% 的才算異動日，那天的新聞直接掛在那天底下。</div>
+    ${r.events.length
+      ? r.events.map(evtHTML).join("")
+      : `<div class="nohit">這段期間沒有任何一天漲跌超過 ${r.threshold}%，股價很平靜，所以沒有異動日可對照。</div>`}
+  </details>
+
+  <details class="card fold">
+    <summary>其餘新聞（${rest.length} 篇）</summary>
+    <div class="meta">這些有情緒的新聞<strong>沒有落在任何異動日</strong>——當天股價沒什麼動靜。</div>
+    ${sentimentExplainer(neutral, all.length)}
+    ${rest.length
+      ? `<div class="artlist">${rest.map(artHTML).join("")}</div>`
+      : `<div class="nohit">沒有了 —— 有情緒的新聞全部都落在上面那幾天。</div>`}
+  </details>`;
+}
+
+function sentimentExplainer(neutral, total) {
+  return `<details class="explain">
+    <summary>👍 👎 是怎麼判斷的？（點開看規則，很重要）</summary>
+    <div class="explainbody">
+      <p><strong>這不是 AI 讀懂文章，是關鍵字比對標題。</strong>規則只有三行：</p>
+      <ul>
+        <li>標題出現 <code>surge / jumps / beats / upgrade / wins / record high</code> 這類字 → 算一分<strong>正面</strong></li>
+        <li>標題出現 <code>plunge / miss / downgrade / lawsuit / layoffs / probe</code> 這類字 → 算一分<strong>負面</strong></li>
+        <li>哪邊分數高就歸哪邊；<strong>平手或兩邊都沒有 → 中性</strong></li>
+      </ul>
+      <p>只看標題，不看內文，不懂反諷也不懂上下文。
+      這次 ${total} 篇裡有 ${neutral} 篇是中性（多半是「今日盤中異動股」這種沒有情緒字眼的標題），已經幫你藏起來。</p>
+      <p class="warn-line">⚠️ 這是拿來<strong>縮小閱讀範圍</strong>的粗篩，不是買賣訊號。看到 👍 還是要點開讀原文。</p>
+    </div>
+  </details>`;
+}
+
+function coverageNote(r) {
+  const c = r.news_coverage;
+  if (!c.from) return "";
+  const gap = r.events.filter(e => !e.covered).length;
+  if (!gap) return `<div class="meta" style="margin-top:-12px">新聞涵蓋 ${c.from} ～ ${c.to}</div>`;
+  return `<div class="meta" style="margin-top:-12px;color:var(--critical)">
+    ⛔ 新聞只涵蓋 ${c.from} ～ ${c.to}，早於 ${c.from} 的 ${gap} 個異動日沒有新聞資料可比對（不是沒有新聞）。</div>`;
+}
+
+const VERDICT_ICON = { market: "🌊", alpha: "🎯", counter: "⚡", unknown: "❔" };
+
+function loadCompare() {
+  if (!chart.symbol) return;
+  const q = new URLSearchParams({ symbol: chart.symbol, range: chart.range, sector: chart.sector });
+  $("#compare").innerHTML = `<div class="card"><div class="loading">載入對照…</div></div>`;
+  fetch(`/api/compare?${q}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) throw new Error(d.error);
+      $("#compare").innerHTML = compareHTML(d);
+    })
+    .catch(err => {
+      $("#compare").innerHTML = `<div class="card"><div class="err">✕ 對照載入失敗：${esc(err.message)}</div></div>`;
+    });
+}
+
+function compareHTML(d) {
+  // 自己的漲跌只寫一次。一支股票配兩個對照組時，把它重複印在每一列只是噪音。
+  // 「贏」後面接負數是自相矛盾的 —— 符號的方向直接寫進「贏／輸」那個字裡
+  const pct = v => `<b style="color:${v > 0 ? "var(--good)" : "var(--critical)"}">${v > 0 ? "+" : ""}${v}%</b>`;
+  // 差距四捨五入到 0.0 就是平手。拿四捨五入後的值去判斷勝負，會把「贏 0.04 pt」寫成「輸 0 pt」
+  const row = x => {
+    const gap = Math.abs(+(d.mine - x.pct).toFixed(1));
+    const [word, color] = gap === 0 ? ["平手", "var(--text-muted)"]
+      : d.mine > x.pct ? ["贏", "var(--good)"] : ["輸", "var(--critical)"];
+    return `<div class="cmp-row">
+      <span class="c1">比 ${esc(x.label)}　<span class="c2">${esc(x.symbol)}</span></span>
+      <span class="num">${pct(x.pct)}</span>
+      <span class="num" style="color:${color}">${word} ${gap} pt</span>
+    </div>`;
+  };
+  return `<div class="card">
+    <div class="cmp-head">
+      <h2>大盤／同業對照 · ${esc(d.label)}</h2>
+      <div class="cmp-btns">
+        <button type="button" class="valu-btn" onclick="openValu()">📐 估值：現在貴不貴？</button>
+        <button type="button" class="valu-btn" id="btnVix" onclick="openVix()">😱 恐慌指數對照</button>
+      </div>
+    </div>
+    <div class="meta">${esc(d.from)} ～ ${esc(d.to)}</div>
+    <div class="cmp-me">${esc(chart.symbol)}${chart.basics && chart.basics.sector_label
+      ? `（${esc(chart.basics.sector_label)}）` : ""} 這 ${esc(d.label)} ${pct(d.mine)}</div>
+    <div class="overview">${d.rows.map(row).join("")}</div>
+    <div class="market" data-code="${d.verdict.code}">
+      <div class="mverdict">${VERDICT_ICON[d.verdict.code]} ${esc(d.verdict.text)}</div>
+    </div>
+    <div class="caveat">※ 上面那行是<strong>這支自己</strong>漲跌多少，下面兩列是<strong>同一段日期</strong>裡
+      大盤和它所屬板塊漲跌多少。區間就是你在走勢圖上點選的那個，按 1D／5D／1M／6M／YTD／1Y／5Y 會整批重算。<br>
+      最右邊那欄是兩者<strong>相減</strong>，單位是 <strong>pt（百分點）</strong>，不是 %。
+      贏板塊＝這一段是公司自己的本事；輸板塊＝它是被整個板塊抬上去的，自己還扯後腿。</div>
+  </div>`;
+}
+
+/* ---------- 公司回購：花了多少，股數有沒有真的變少 ---------- */
+const BB_TONE = { real: "var(--good)", offset: "var(--warning)", none: "var(--text-muted)" };
+
+
+function sharesLine(shares) {
+  // 換成折線，不再用長條 —— 跟下面的注意力溫度計長得一樣就等於白畫一張。
+  // 而且這張卡真正的主角是「股數有沒有變少」，那是一條隨時間下降的線，不是一堆獨立的柱子
+  const W = 600, H = 120, PAD = 6;
+  const v = shares.map(x => x.count);
+  const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+  const x = i => PAD + i * (W - PAD * 2) / Math.max(v.length - 1, 1);
+  const y = n => PAD + (hi - n) * (H - PAD * 2) / span;
+  const pts = v.map((n, i) => `${x(i).toFixed(1)},${y(n).toFixed(1)}`).join(" ");
+  const down = v[v.length - 1] < v[0];
+  const c = down ? "var(--good)" : "var(--critical)";
+  return `<svg class="bb-line" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <polygon points="${x(0)},${H} ${pts} ${x(v.length - 1)},${H}" fill="${c}" opacity=".13"></polygon>
+    <polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2.5"
+      vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline>
+    <circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="4" fill="${c}"></circle>
+  </svg>`;
+}
+
+function buybackHTML(d) {
+  const s0 = d.shares_from, s1 = d.shares_to;
+  return `<div class="card">
+    <h2>公司自己買回股票</h2>
+    <div class="bb-head">
+      <b style="color:${BB_TONE[d.verdict.code]}">${d.boost > 0 ? "+" : ""}${d.boost}%</b>
+      <span>回購每年把<strong>每股盈餘</strong>推高這麼多　·　近四季花了
+        <strong>${money(d.year)} 美元</strong>，市值 ${money(d.market_cap)} 美元</span>
+    </div>
+    <div class="bb-verdict" style="color:${BB_TONE[d.verdict.code]}">${esc(d.verdict.text)}</div>
+    <div class="bb-yield">公司一年還你 <b>${d.total_yield}%</b>
+      ＝ 回購 ${d.yield}% ＋ 配息 ${d.dividend_yield === null ? "0%（這家不配息）" : d.dividend_yield + "%"}</div>
+    <div class="meta" style="margin-bottom:0">流通股數 ${esc(s0.period)} ${(s0.count / 1e8).toFixed(2)} 億股
+      → ${esc(s1.period)} ${(s1.count / 1e8).toFixed(2)} 億股（年變化 ${d.shrink > 0 ? "+" : ""}${d.shrink}%）</div>
+    ${d.annual.length ? `<div class="overview" style="margin:16px 0 4px">
+      <div class="grid4 hd"><span>年度</span><span>回購花了多少</span><span>年底流通股數</span><span>股數比前一年</span></div>
+      ${d.annual.map(r => `<div class="grid4">
+        <span>${r.year}</span>
+        <span class="num">${money(r.amount)}</span>
+        <span class="num">${(r.shares / 1e8).toFixed(2)} 億股</span>
+        <span class="num" style="color:${r.change === null ? "var(--text-muted)" : r.change < 0 ? "var(--good)" : "var(--critical)"}">${
+          r.change === null ? "—" : `${r.change > 0 ? "+" : ""}${r.change}%`}</span>
+      </div>`).join("")}
+    </div>
+    <div class="meta">兩欄要一起看：花的錢加倍、股數卻沒有跟著多減一倍，那筆錢就有一半沒變成你的。
+      Yahoo 的年度現金流量表只回得到最近 4 年，所以這張表不會更長。</div>` : ""}
+    <div class="bb-plot">
+      ${sharesLine(d.shares)}
+      <span class="bb-tag hi">${(Math.max(...d.shares.map(x => x.count)) / 1e8).toFixed(2)} 億股</span>
+      <span class="bb-tag lo">${(Math.min(...d.shares.map(x => x.count)) / 1e8).toFixed(2)} 億股</span>
+    </div>
+    <div class="bb-ends"><span>${esc(s0.period)}</span><span>流通股數怎麼走的（越低越好）</span><span>${esc(s1.period)}</span></div>
+    <div class="caveat">回購＝公司拿<strong>自己帳上的錢</strong>買回自己的股票，跟高階主管自掏腰包買是兩回事。
+      <strong>金額大不等於對你有利</strong>：公司可以一邊花錢買回、一邊把股票發給員工，股數一股沒少 ——
+      那筆錢繞了一圈進了員工口袋，不是你的。<br>
+      所以這裡把<strong>流通股數</strong>並排放著。股數真的變少，你手上每一股才真的代表更多公司。<br>
+      最上面那個數字是<strong>推力</strong>：披薩切 10 片買回 2 片丟掉，剩 8 片，公司沒多賺但你那片變大了。
+      這是回購能幫到股價的<strong>唯一</strong>路徑 —— 股數沒少，推力就是 0。
+      「公司一年還你」把回購和配息加在一起，因為那是同一件事的兩種做法，只看一邊會誤判。
+      配息殖利率用<strong>最近一筆配息 × 一年配幾次</strong>推算，不是把過去一年加總。</div>
+  </div>`;
+}
+
+function loadBuyback() {
+  if (!chart.symbol) return;
+  $("#buyback").innerHTML = `<div class="card"><div class="loading">讀取回購資料…</div></div>`;
+  fetch(`/api/buyback?symbol=${encodeURIComponent(chart.symbol)}`).then(r => r.json()).then(d => {
+    if (d.error) throw new Error(d.error);
+    $("#buyback").innerHTML = buybackHTML(d);
+  }).catch(err => {
+    $("#buyback").innerHTML = `<div class="card"><div class="err">✕ 回購資料載入失敗：${esc(err.message)}</div></div>`;
+  });
+}
+
+/* ---------- ETF 代號：滑過去看它裡面裝了哪些股票 ---------- */
+const etfTag = etf => `<span class="etf" data-etf="${esc(etf)}">${esc(etf)}</span>`;
+const holdingsCache = {};
+
+function holdingsHTML(d) {
+  if (!d.holdings.length) {
+    return `<h4>${esc(d.etf)}</h4><div>這一檔沒有成份股 —— 它直接持有實物或單一資產，不是一籃子公司。</div>`;
+  }
+  return `<h4>${esc(d.etf)} 前十大成份股</h4>` + d.holdings.map(h => `<div class="hrow">
+    <b>${esc(h.symbol)}</b><span class="hname" title="${esc(h.name)}">${esc(h.name)}</span>
+    <span>${h.weight}%</span></div>`).join("");
+}
+
+function showEtfTip(el) {
+  const etf = el.dataset.etf, tip = $("#etfTip");
+  const r = el.getBoundingClientRect();
+  tip.classList.remove("hidden");
+  // 右邊塞不下就往左翻。300 是 .etf-tip 的寬度，別讓它掉出畫面外
+  tip.style.left = `${Math.min(r.left, innerWidth - 316)}px`;
+  tip.style.top = `${Math.min(r.bottom + 8, innerHeight - 352)}px`;
+  if (holdingsCache[etf]) {
+    tip.innerHTML = holdingsCache[etf];
+    return;
+  }
+  tip.innerHTML = `<div class="loading">讀取 ${esc(etf)} 的成份股…</div>`;
+  fetch(`/api/holdings?etf=${encodeURIComponent(etf)}`).then(r => r.json()).then(d => {
+    if (d.error) throw new Error(d.error);
+    holdingsCache[etf] = holdingsHTML(d);
+    if (tip.dataset.showing === etf) tip.innerHTML = holdingsCache[etf];
+  }).catch(err => {
+    if (tip.dataset.showing === etf) tip.innerHTML = `<div class="err">✕ ${esc(err.message)}</div>`;
+  });
+}
+
+function hideEtfTip() {
+  $("#etfTip").classList.add("hidden");
+  delete $("#etfTip").dataset.showing;
+}
+
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest(".etf");
+  if (!el) return;
+  $("#etfTip").dataset.showing = el.dataset.etf;
+  showEtfTip(el);
+});
+document.addEventListener("mouseout", e => { if (e.target.closest(".etf")) hideEtfTip(); });
+
+/* ---------- 資金流向：錢正在從哪一格搬到哪一格 ---------- */
+function rotationHTML(d) {
+  const top = Math.max(...d.sectors.map(x => Math.abs(x.rs)), 1);
+  const colour = t => t === "in" ? "var(--good)" : t === "out" ? "var(--critical)" : "var(--text-muted)";
+  // 條從中間往兩邊長。贏大盤往右、輸大盤往左 —— 零點對齊才看得出誰在哪一邊
+  const row = x => {
+    const w = Math.abs(x.rs) / top * 50;
+    const bar = x.rs >= 0
+      ? `<i style="margin-left:50%;width:${w}%;background:${colour(x.tone)}"></i>`
+      : `<i style="margin-left:${50 - w}%;width:${w}%;background:${colour(x.tone)}"></i>`;
+    return `<div class="rot-row${x.label === rot.mine ? " me" : ""}">
+      <span>${esc(x.label)}　${etfTag(x.etf)}</span>
+      <span class="rot-bar">${bar}</span>
+      <span class="num" style="text-align:right;color:${colour(x.tone)}">${x.rs > 0 ? "+" : ""}${x.rs}</span>
+    </div>`;
+  };
+  const risk = r => `<div class="rot-risk">
+    <b style="color:${colour(r.tone)}">${esc(r.name)}</b>
+    <span style="color:var(--text-muted)">（${r.pair.split("÷").map(etfTag).join("÷")}）</span>
+    <div style="margin-top:4px">${esc(r.text)}　
+      <span style="color:var(--text-muted)">近三月 ${r.moves["3月"] > 0 ? "+" : ""}${r.moves["3月"]}%　
+      近一年 ${r.moves["12月"] > 0 ? "+" : ""}${r.moves["12月"]}%</span></div>
+  </div>`;
+
+  const ranges = d.ranges.map(r =>
+    `<label><input type="radio" name="rotrange" value="${r.days}"${r.days === d.days ? " checked" : ""}>
+      <span>${esc(r.label)}</span></label>`).join("");
+
+  return `<div class="rot-head">
+      <h3>哪個板塊在贏大盤</h3>
+      <div class="ranges chart-ranges" id="rotRanges" role="group" aria-label="資金流向區間">${ranges}</div>
+    </div>
+    <div class="meta">看最近 ${esc(d.range_label)}（${d.days} 個交易日），資料到 ${esc(d.asof)}</div>
+    <div class="overview">${d.sectors.map(row).join("")}</div>
+    <div class="rot-verdict">${esc(d.verdict.text)}</div>
+    <h3 class="rot-h">錢現在敢不敢冒險</h3>
+    ${d.risk.map(risk).join("")}
+    <div class="caveat">看「漲多少」會被騙：整袋錢變大的時候大家都漲。所以這裡算的是
+      <strong>相對強度＝板塊價格 ÷ 大盤價格</strong> —— 整袋變大變小會被分子分母一起吃掉，
+      剩下的才是錢在板塊之間搬家。數字的單位是<strong>百分點</strong>：
+      正的＝這段期間贏大盤這麼多，錢在搬進來；負的＝輸大盤，錢在流出去。
+      上下順序是<strong>固定的</strong>，換區間不會重排 —— 要比大小看<strong>長條</strong>，
+      不是看名次；每換一次就跳一次位置的話，根本追不到自己在看的那一條。<br>
+      下半部每一列是一個天秤：左邊危險、右邊安全，往哪邊倒就是錢往哪邊跑。
+      每一列量的是<strong>不同的一件事</strong>（一般人敢不敢花錢、股票裡敢不敢追成長、
+      借錢的敢不敢借給爛公司、抱不抱得住亂跳的股票、最投機的錢在不在）。
+      它們<strong>互相打架是正常的，那個矛盾本身就是訊息</strong>：
+      代表錢不是在「進攻 vs 防禦」之間輪動，而是從每一個地方抽出來、全部灌進同一個地方。
+      資料來源：Yahoo 的 11 檔 SPDR 類股 ETF、SPY，以及 HYG／TLT、SPHB／SPLV、IBIT／GLD。</div>`;
+}
+
+const rot = { mine: "", days: 21 };
+
+function loadRot(days) {
+  rot.days = days;
+  $("#rotBody").innerHTML = `<div class="loading">讀取資金流向…</div>`;
+  fetch(`/api/rotation?days=${days}`).then(r => r.json()).then(d => {
+    if (d.error) throw new Error(d.error);
+    $("#rotBody").innerHTML = rotationHTML(d);
+    $("#rotRanges").onchange = e => loadRot(+e.target.value);
+  }).catch(err => {
+    $("#rotBody").innerHTML = `<div class="err">✕ 資金流向載入失敗：${esc(err.message)}</div>`;
+  });
+}
+
+function openRot() {
+  rot.mine = chart.basics ? (chart.basics.sector_label || "") : "";
+  $("#rotModal").classList.remove("hidden");
+  loadRot(rot.days);
+}
+function closeRot() { $("#rotModal").classList.add("hidden"); hideEtfTip(); }
+
+$("#btnRot").onclick = openRot;
+$("#rotClose").onclick = closeRot;
+$("#rotModal").onclick = e => { if (e.target.id === "rotModal") closeRot(); };
+
+/* ---------- 注意力溫度計：只量體溫，不指方向 ---------- */
+function attentionHTML(d) {
+  const max = Math.max(...d.days.map(x => x.count), 1);
+  // 刻度取到比最大值大的整數，柱子才不會頂到天花板看不出高度
+  const top = Math.ceil(max / 10) * 10 || 10;
+  const bars = d.days.map(x => {
+    const spike = x.count >= d.spike_at && x.count > 0;
+    return `<i title="${esc(x.date)}　${x.count} 則" style="height:${x.count / top * 100}%;
+      background:${spike ? "var(--warning)" : "var(--series-1)"};opacity:${spike ? 1 : .5}"></i>`;
+  }).join("");
+  const peak = d.days.reduce((a, b) => b.count > a.count ? b : a);
+  const hot = d.days.some(x => x.count >= d.spike_at && x.count > 0);
+  const ticks = [top, top / 2, 0].map(v =>
+    `<span style="bottom:${v / top * 100}%">${v}</span>`).join("");
+
+  return `<div class="card att">
+    <h2>注意力溫度計 · 最近 14 天每天幾則新聞</h2>
+    <div class="meta">中位數 ${d.median} 則／天　·　最熱 ${esc(peak.date)}（${peak.count} 則）</div>
+    <div class="att-plot">
+      <div class="att-yaxis">${ticks}</div>
+      <div class="att-bars">
+        <i class="att-grid" style="bottom:100%"></i><i class="att-grid" style="bottom:50%"></i>
+        ${bars}
+      </div>
+    </div>
+    <div class="att-axis">${d.days.map((x, i) =>
+      `<span>${i % 2 === 0 ? x.date.slice(5) : ""}</span>`).join("")}</div>
+    <details class="explain att-note"><summary>這張圖怎麼看？</summary>
+      <div class="explainbody">
+        <p>直條是<strong>每天有幾則新聞</strong>，左邊是刻度。它只量「有多少人在討論」，
+          ${hot ? "黃色是超過中位數 2 倍的日子 —— 去下面的新聞列表找那一天發生什麼。"
+                : "這 14 天沒有任何一天超過中位數的 2 倍，算平靜，所以沒有黃色尖峰。"}</p>
+        <p>⚠️ 這條<strong>只回答「今天有沒有事」，不回答「該買還該賣」</strong> —— 暴漲跟暴跌都會讓新聞變多。</p>
+        <p>固定就是最近 14 天，<strong>不會跟著走勢圖的區間按鈕變</strong>（資料來源只給得到這麼多）。
+          週末本來就少，今天的數字會隨著當天過去持續增加。</p>
+      </div></details>
+  </div>`;
+}
+
+function loadAttention() {
+  if (!chart.symbol) return;
+  $("#attention").innerHTML = `<div class="card"><div class="loading">讀取注意力溫度計…</div></div>`;
+  fetch(`/api/attention?symbol=${encodeURIComponent(chart.symbol)}`).then(r => r.json()).then(d => {
+    if (d.error) throw new Error(d.error);
+    $("#attention").innerHTML = attentionHTML(d);
+  }).catch(err => {
+    $("#attention").innerHTML = `<div class="card"><div class="err">✕ 注意力溫度計載入失敗：${esc(err.message)}</div></div>`;
+  });
+}
+
+function marketHTML(m) {
+  if (!m || !m.rows.length) return "";
+  const cell = r => {
+    const up = r.pct > 0;
+    return `<span class="mcell"><b>${esc(r.label)}</b> ${esc(r.symbol)}
+      <i style="color:${up ? "var(--good)" : "var(--critical)"}">${up ? "▲ +" : "▼ "}${r.pct}%</i></span>`;
+  };
+  return `<div class="market" data-code="${m.verdict.code}">
+    <div class="mrow">${m.rows.map(cell).join("")}</div>
+    <div class="mverdict">${VERDICT_ICON[m.verdict.code]} ${esc(m.verdict.text)}</div>
+  </div>`;
+}
+
+function evtHTML(e) {
+  const up = e.pct > 0;
+  const worth = e.articles.filter(a => a.sentiment !== "neutral");
+  const hidden = e.articles.length - worth.length;
+  const c = up ? "var(--good)" : "var(--critical)";
+  return `<div class="evt">
+    <div class="when">
+      <div class="d">${esc(e.date)}</div>
+      <div class="p" style="color:${c}">${up ? "▲" : "▼"} ${up ? "+" : ""}${e.pct}%</div>
+      <div class="ms" style="font-size:11px;color:var(--text-muted)">$${e.close}</div>
+    </div>
+    <div class="body">
+      ${marketHTML(e.market)}
+      ${e.articles.length
+        ? `<div class="chips">${tally(e.articles)}${hidden ? `<span class="chip">▪️ ${hidden} 篇中性已隱藏</span>` : ""}</div>
+           <div class="artlist">${worth.map(artHTML).join("")}</div>
+           ${worth.length ? "" : `<div class="nohit">這天的 ${e.articles.length} 篇全是中性標題。</div>`}`
+        : e.covered
+          ? `<div class="nohit"><em>⚠ 找不到對應新聞</em><br>這天股價動了 ${Math.abs(e.pct)}%，但當日沒有新聞可解釋。可能是大盤連動，也可能是我們的來源漏了。</div>`
+          : `<div class="nohit" style="color:var(--text-muted)"><em style="color:var(--critical)">⛔ 超出新聞涵蓋範圍</em><br>這天不在新聞來源回傳的期間內，<strong>不代表當天沒有新聞</strong>。Finnhub 免費 tier 通常只回最近約兩週。</div>`}
+    </div>
+  </div>`;
+}
+
+const TONE = {
+  positive: ["👍", "偏正面"],
+  negative: ["👎", "偏負面"],
+  neutral: ["▪️", "中性"],
+};
+
+const artHTML = a => {
+  const [icon, word] = TONE[a.sentiment] || TONE.neutral;
+  return `<details class="art" data-tone="${a.sentiment}">
+    <summary>
+      <span class="tone t-${a.sentiment}" title="${word}（關鍵字推測，僅供參考）">${icon}</span>
+      <span class="ttl">${esc(a.headline)}</span>
+      <span class="src">${esc(a.source)} · ${esc(a.date)} · ${word}</span>
+    </summary>
+    <div class="artbody">
+      ${a.summary ? `<p>${esc(a.summary)}</p>`
+        : `<p class="nosum">這個來源沒有提供摘要，點下面連結看原文。</p>`}
+      ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">開啟原文 ↗</a>` : ""}
+    </div>
+  </details>`;
+};
+
+function tally(list) {
+  const n = s => list.filter(a => a.sentiment === s).length;
+  return `<span class="chip">${list.length} 篇</span>`
+    + (n("positive") ? `<span class="chip">👍 ${n("positive")}</span>` : "")
+    + (n("negative") ? `<span class="chip">👎 ${n("negative")}</span>` : "");
+}
+
+
+/* ---------- Heatmap 彈窗：TradingView 的外掛 widget，第一次開才載入 ---------- */
+const HEATMAP_SRC = "https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js";
+let heatLoaded = false;
+
+function openHeat() {
+  $("#heatModal").classList.remove("hidden");
+  if (heatLoaded) return;
+  heatLoaded = true;
+
+  const box = document.createElement("div");
+  box.className = "tradingview-widget-container";
+  const inner = document.createElement("div");
+  inner.className = "tradingview-widget-container__widget";
+  const s = document.createElement("script");
+  s.src = HEATMAP_SRC;
+  s.async = true;
+  s.textContent = JSON.stringify({
+    dataSource: "SPX500",
+    blockSize: "market_cap_basic",
+    blockColor: "change",
+    grouping: "sector",
+    locale: "zh_TW",
+    symbolUrl: "",
+    colorTheme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
+    hasTopBar: true,
+    isDataSetEnabled: true,
+    isZoomEnabled: true,
+    hasSymbolTooltip: true,
+    isMonoSize: false,
+    width: "100%",
+    height: "100%",
+  });
+  s.onerror = () => {
+    heatLoaded = false;
+    $("#heatBody").innerHTML = `<div class="err" style="padding:24px">
+      ✕ TradingView widget 載入失敗。這個圖是跟 tradingview.com 即時拿的，需要對外網路。</div>`;
+  };
+  box.append(inner, s);
+  $("#heatBody").innerHTML = "";
+  $("#heatBody").appendChild(box);
+}
+
+function closeHeat() { $("#heatModal").classList.add("hidden"); }
+
+$("#railToggle").onclick = () => {
+  const open = document.body.dataset.rail !== "1";
+  document.body.dataset.rail = open ? "1" : "0";
+  $("#railItems").hidden = !open;
+  $("#railToggle").setAttribute("aria-expanded", String(open));
+};
+
+const IMPACT_DOT = { direct: "🔴", market: "🟡", unrelated: "⚪" };
+const cal = { year: 0, month: 0 };
+
+async function loadCal() {
+  const q = new URLSearchParams({ year: cal.year, month: cal.month });
+  if (state.report) { q.set("symbol", state.report.symbol); q.set("sector", state.report.basics.sector || ""); }
+  $("#calBody").innerHTML = `<div class="nohit">讀取中…</div>`;
+  const res = await fetch(`/api/calendar?${q}`);
+  const d = await res.json();
+  if (d.error) { $("#calBody").innerHTML = `<div class="err">✕ ${esc(d.error)}</div>`; return; }
+  $("#calBody").innerHTML = calHTML(d);
+  $("#calPrev").onclick = () => shiftMonth(-1);
+  $("#calNext").onclick = () => shiftMonth(1);
+}
+
+function shiftMonth(step) {
+  const m = cal.month + step;
+  cal.year += Math.floor((m - 1) / 12);
+  cal.month = ((m - 1 + 12) % 12) + 1;
+  loadCal();
+}
+
+function calHTML(d) {
+  const byDay = new Map();
+  for (const e of d.events) byDay.set(+e.date.slice(8), [...(byDay.get(+e.date.slice(8)) || []), e]);
+
+  const blanks = Array.from({ length: (d.first_weekday + 1) % 7 }, () => `<div class="cell blank"></div>`);
+  const cells = Array.from({ length: d.days }, (_, i) => {
+    const hits = byDay.get(i + 1) || [];
+    return `<div class="cell"><div class="dn">${i + 1}</div>
+      <div class="dots">${hits.map(e => IMPACT_DOT[e.impact]).join("")}</div></div>`;
+  });
+
+  const who = state.report ? `已套用 <b>${esc(state.report.symbol)}</b>（${esc(state.report.basics.sector_label || "未知產業")}）的相關度`
+    : "還沒搜尋任何股票，所以沒有標紅的項目";
+
+  return `<div class="calnav">
+      <button type="button" id="calPrev">‹ 上個月</button>
+      <span class="ym">${d.year} 年 ${d.month} 月</span>
+      <button type="button" id="calNext">下個月 ›</button>
+    </div>
+    <div class="grid7">${["日","一","二","三","四","五","六"].map(w => `<div class="wd">${w}</div>`).join("")}
+      ${blanks.join("")}${cells.join("")}</div>
+    <div class="callist">${d.events.map(e => `<div class="calrow" data-impact="${e.impact}">
+      <span class="cd">${esc(e.date.slice(5))}</span>
+      <span class="cn">${IMPACT_DOT[e.impact]} ${esc(e.name)}</span>
+      <span class="cnote">${esc(e.note)}</span>
+    </div>`).join("")}</div>
+    <div class="caveat">${who}。${state.report
+      ? (d.next_earnings
+        ? `下一次財報日是 <b>${esc(d.next_earnings)}</b>${d.next_earnings.slice(0, 7) === `${d.year}-${String(d.month).padStart(2, "0")}` ? "（就在本月）" : "（不在本月，往後翻）"}。`
+        : "Finnhub 目前沒有提供這支股票未來的財報日。")
+      : ""}</div>
+    <div class="caveat">⚠️ 這裡只放<strong>有固定規則、算得出來</strong>的日子，加上這支股票的財報日（Finnhub 真實資料）。
+      ${d.has_fomc_data ? "" : "<strong>FOMC 利率會議沒有免費資料源，本月曆不涵蓋</strong>。"}
+      醫藥股的 FDA 審查日（PDUFA）同樣沒有免費資料，也不涵蓋。這兩類要自己去查。</div>`;
+}
+
+function openCal() {
+  const now = new Date();
+  if (!cal.year) { cal.year = now.getFullYear(); cal.month = now.getMonth() + 1; }
+  $("#calModal").classList.remove("hidden");
+  loadCal();
+}
+function closeCal() { $("#calModal").classList.add("hidden"); }
+
+$("#btnCal").onclick = openCal;
+$("#calClose").onclick = closeCal;
+$("#calModal").onclick = e => { if (e.target.id === "calModal") closeCal(); };
+
+$("#vixClose").onclick = closeVix;
+$("#vixModal").onclick = e => { if (e.target.id === "vixModal") closeVix(); };
+$("#btnHeat").onclick = openHeat;
+$("#heatClose").onclick = closeHeat;
+$("#heatModal").onclick = e => { if (e.target.id === "heatModal") closeHeat(); };
+
+/* ---------- 估值：現在的價格 vs 這家公司自己的過去 ---------- */
+// 不到百億就留一位小數。6.3 億寫成「6 億」的話，回購殖利率會對不上帳（6/213 = 2.8%，實際 2.9%）
+const money = v => v >= 1e12 ? (v / 1e12).toFixed(2) + " 兆"
+  : (v / 1e8).toFixed(v >= 1e10 ? 0 : 1) + " 億";
+
+function splitHTML(s) {
+  // 股價 = 每股盈餘 × 本益比，所以漲幅也拆成這兩截，相乘會等於總漲幅
+  const line = (label, pct, color, note) => {
+    const w = Math.min(100, Math.abs(pct) / Math.max(1, Math.abs(s.earnings), Math.abs(s.multiple)) * 100);
+    return `<div class="valu-line">
+      <span class="vl">${esc(label)}</span>
+      <span class="vt"><i style="width:${w}%;background:${color}"></i></span>
+      <span class="vn" style="color:${color}">${pct > 0 ? "+" : ""}${pct}%</span>
+    </div>${note ? `<div class="caveat" style="margin:-2px 0 4px">${note}</div>` : ""}`;
+  };
+  const good = "var(--good)", bad = "var(--critical)";
+  return `<div class="valu-split">
+    ${line("公司真的多賺", s.earnings, s.earnings >= 0 ? good : bad,
+      `每股盈餘 ${s.eps_from} → ${s.eps_to} 美元`)}
+    ${line("市場多付錢", s.multiple, s.multiple >= 0 ? bad : good,
+      "本益比自己的變化。這一截是情緒，會還回去。")}
+    <div class="valu-line" style="border-top:1px solid var(--grid);padding-top:9px">
+      <span class="vl"><b>股價總共</b></span><span></span>
+      <span class="vn">${s.price > 0 ? "+" : ""}${s.price}%</span>
+    </div>
+  </div>
+  <div class="caveat">兩截相乘會等於總漲幅（不是相加，因為是連乘）。
+    「市場多付錢」那截越大，這波漲越靠情緒撐著。</div>`;
+}
+
+// 折線的 y 座標：viewBox 高 20，上面留 2 當呼吸空間。SVG 和游標小圓點共用同一條算式。
+const peY = (v, lo, span) => 20 - (v - lo) / span * 18;
+
+function peSparkHTML(p) {
+  const vals = p.spark.map(s => s.pe);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+  const pts = p.spark.map((s, i) =>
+    `${(i / (p.spark.length - 1) * 100).toFixed(2)},${peY(s.pe, lo, span).toFixed(2)}`);
+  const up = vals[vals.length - 1] >= vals[0];
+  return `<div class="pespark" id="peSpark">
+    <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${pts.join(" ")}" fill="none" stroke="${up ? "var(--critical)" : "var(--good)"}" stroke-width="1.2"/>
+      <line class="pk-x" x1="0" x2="0" y1="0" y2="20" stroke="var(--text-muted)" stroke-width=".5"/>
+    </svg>
+    <i class="pk-dot"></i>
+    <div class="pk-ends"><span>${esc(p.spark[0].d)}</span><span>${esc(p.spark[p.spark.length - 1].d)}</span></div>
+    <div class="pk-read" id="peRead">← 在線上左右滑動，看當時的股價與本益比</div>
+  </div>`;
+}
+
+function wirePeSpark(p) {
+  const box = $("#peSpark"), read = $("#peRead");
+  const vals = p.spark.map(s => s.pe);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+
+  const last = p.spark.length - 1;
+  const hint = "← 在線上左右滑動，看當時的股價與本益比";
+
+  box.onpointermove = e => {
+    const r = box.querySelector("svg").getBoundingClientRect();
+    const i = Math.min(last, Math.max(0, Math.round((e.clientX - r.left) / r.width * last)));
+    const s = p.spark[i], x = i / last * 100;
+    // 拿那天的本益比去比整段區間，答的是「那天貴不貴」，不是今天
+    const pct = p.high > p.low ? Math.round((s.pe - p.low) / (p.high - p.low) * 100) : 50;
+    box.classList.add("pk-on");
+    box.querySelector(".pk-x").setAttribute("x1", x);
+    box.querySelector(".pk-x").setAttribute("x2", x);
+    box.querySelector(".pk-dot").style.cssText = `left:${x}%;top:${peY(s.pe, lo, span) * 5}%`;
+    read.innerHTML = `<b>${esc(s.d)}</b>　股價 <b>$${s.px}</b> ÷ 當時盈餘 <b>${s.eps}</b>
+      ＝ 本益比 <b>${s.pe}</b>　<em>當時落在區間第 ${pct}%</em>`;
+  };
+  box.onpointerleave = () => {
+    box.classList.remove("pk-on");
+    read.textContent = hint;
+  };
+}
+
+/* ---------- 股價軌道：每季一條斜線，上下撐開這支自己的晃動幅度 ---------- */
+const TREND_TONE = { cheap: "var(--good)", fair: "var(--text-primary)", rich: "var(--critical)" };
+const TREND_BOX = { W: 1180, H: 340, L: 56, R: 18, T: 14, B: 34 };
+// 拖不到這麼多天就當成手滑點了一下，不觸發重算
+const TREND_MIN_DRAG_DAYS = 20;
+
+const dayGap = (a, b) => (Date.parse(b) - Date.parse(a)) / 86400000;
+const isoAdd = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
+const clampDay = (d, lo, hi) => (d < lo ? lo : d > hi ? hi : d);
+// 斜線在某一天的高度。段頭被裁掉時要用裁切點的高度去算 y 軸範圍，不能拿畫面外的 y0
+const segY = (s, d) => s.y0 + (s.y1 - s.y0) * dayGap(s.from, d) / Math.max(dayGap(s.from, s.to), 1);
+
+function trendHTML(d) {
+  const t = d.trend;
+  if (t.error) {
+    return `<h3>股價軌道：現在落在哪？</h3>
+      <div class="err">✕ 軌道算不出來：${esc(t.error)}</div>
+      <div class="caveat">最常見的原因是這段期間內沒有財報公布日，或是財報前後抓不到足夠的股價。</div>`;
+  }
+  const n = t.now;
+  return `<div class="valu-now" id="trendNow"><b style="color:${TREND_TONE[n.verdict.code]}">$${n.price}</b>
+      <span>軌道中心 <b>$${n.fair}</b>，平常晃動 <b>±$${n.sigma}</b>　·　${n.verdict.text}
+        （差 ${n.gap > 0 ? "+" : ""}${n.gap}%）</span></div>
+    <div id="trendChart"></div>
+    <div class="pk-read" id="trendRead">${trendHint(d.years)}</div>
+    <div class="trend-legend">
+      <span><i class="lg-band lg-in"></i>常走的範圍（±1 個晃動幅度）</span>
+      <span><i class="lg-band lg-out"></i>還算正常（±2 個）</span>
+      <span><i class="lg-dash"></i>軌道中心</span>
+      <span><i class="lg-mark"></i>財報公布日（灰色細實線，下方有日期）</span>
+      <span><i class="lg-today"></i>今天（白色虛線，股價只會畫到這裡）</span>
+      <span><i class="lg-future"></i>今天之後＝預估，畫到下次財報</span>
+      ${d.asof ? `<button type="button" class="valu-btn" id="trendReset"
+        onclick="resetTrend()">↺ 回到今天</button>` : ""}
+    </div>
+    <details class="explain"><summary>這條「合理股價」是怎麼算出來的？（點開看規則）</summary>
+      <div class="explainbody">
+        <p><strong>沒有預測，全是回歸線和標準差。</strong>三步：</p>
+        <ul>
+          <li><strong>切段</strong>：每一次財報公布日切一刀，一段就是一季。</li>
+          <li><strong>軌道高度</strong>：公布日前 7 天、後 21 天的收盤價取<strong>中位數</strong>
+            —— 市場消化完這份財報之後，願意付的價格。</li>
+          <li><strong>軌道方向</strong>：那一整段股價的回歸斜率，再混入一點盈餘成長率
+            （權重 ${t.eps_weight}，所以<strong>主要是看股價慣性</strong>）。</li>
+          <li><strong>帶寬</strong>：最近 5 季、每季財報前後的均價，相鄰兩個的差距取標準差
+            —— 這支股票<strong>自己</strong>平常會晃多大，不是套一個固定的 10%。</li>
+        </ul>
+        <p>⚠️ <strong>跌破下緣不等於該買</strong>。軌道只回答「這個價格對這支自己來說算不算異常」，
+          它不知道公司出了什麼事。真的變壞的股票，會一路貼著下緣繼續跌。</p>
+      </div></details>`;
+}
+
+function trendScale(t, from) {
+  const { W, H, L, R, T, B } = TREND_BOX;
+  const P = t.points, S = t.segments;
+  const d0 = clampDay(from || P[0].d, P[0].d, t.today);
+  // 右邊界是最後一段軌道的結尾（下一次財報公布日），不是最後一筆股價 —— 預估那一截要看得到
+  const dN = t.segments[t.segments.length - 1].to;
+  const days = Math.max(dayGap(d0, dN), 1);
+
+  // y 軸只看畫面上這一段。整段五年一起算的話，放大之後的線會擠成一條平的
+  const vis = P.filter(p => p.d >= d0);
+  const segs = S.filter(s => s.to >= d0);
+  const edges = segs.flatMap(s => [d0 > s.from ? d0 : s.from, s.to]
+    .flatMap(d => [segY(s, d) - 2 * s.sigma, segY(s, d) + 2 * s.sigma]));
+  const lo = Math.min(...vis.map(p => p.c), ...edges);
+  const hi = Math.max(...vis.map(p => p.c), ...edges);
+
+  return { d0, dN, days, vis, segs, lo, hi, today: t.today,
+    X: d => L + dayGap(d0, d) / days * (W - L - R),
+    Y: v => T + (hi - v) / (hi - lo || 1) * (H - T - B),
+    dateAt: x => clampDay(isoAdd(d0, Math.round((x - L) / (W - L - R) * days)), d0, dN) };
+}
+
+function trendAxes(svg, sc) {
+  const { W, H, L, R, T, B } = TREND_BOX;
+  for (let i = 0; i <= 4; i++) {
+    const v = sc.lo + (sc.hi - sc.lo) * i / 4;
+    svg.append(el("line", { x1: L, x2: W - R, y1: sc.Y(v), y2: sc.Y(v),
+      stroke: "var(--line)", "stroke-width": .5 }));
+    const tx = el("text", { x: L - 8, y: sc.Y(v) + 4, "text-anchor": "end", class: "axis-txt" });
+    tx.textContent = "$" + Math.round(v);
+    svg.append(tx);
+  }
+}
+
+function trendXLabels(svg, sc) {
+  const { W, H, L, R, B } = TREND_BOX;
+  // 刻度標在財報公布日的縱線上 —— 軌道是被財報切開的，標別的日子沒有意義。
+  // 由右往左排，擠不下就犧牲舊的：最靠右的「下一次財報日」才是要看的那一格。
+  // 字寬會被 viewBox 拉伸，猜不準，所以先放進畫面實際量，壓到線就拿掉。
+  let taken = null;
+  for (const d of [sc.dN, ...sc.segs.map(s => s.at).reverse()]) {
+    const x = sc.X(d);
+    if (x < L - 1 || x > W - R + 1) continue;
+    const tx = el("text", { x, y: H - 10, class: "axis-txt tr-xlab",
+      "text-anchor": x < L + 56 ? "start" : x > W - R - 56 ? "end" : "middle" });
+    tx.textContent = `財報 ${d}`;
+    svg.append(tx);
+    if (taken !== null && tx.getBoundingClientRect().right + 10 > taken) {
+      tx.remove();
+      continue;
+    }
+    taken = tx.getBoundingClientRect().left;
+    svg.append(el("line", { class: "tr-xtick", x1: x, x2: x, y1: H - B, y2: H - B + 5,
+      stroke: "var(--text-muted)", "stroke-width": .8 }));
+  }
+}
+
+function trendBody(sc) {
+  const { W, H, L, R, T, B } = TREND_BOX;
+  const g = el("g", { "clip-path": "url(#trendClip)" });
+  // 帶子從外層畫到內層，重疊處自然變深 —— 不用算第二種顏色
+  for (const k of [2, 1]) {
+    for (const s of sc.segs) {
+      g.append(el("path", {
+        d: `M${sc.X(s.from)},${sc.Y(s.y0 + k * s.sigma)} L${sc.X(s.to)},${sc.Y(s.y1 + k * s.sigma)}
+            L${sc.X(s.to)},${sc.Y(s.y1 - k * s.sigma)} L${sc.X(s.from)},${sc.Y(s.y0 - k * s.sigma)} Z`,
+        fill: "var(--warning)", opacity: k === 2 ? .12 : .16 }));
+    }
+  }
+  for (const s of sc.segs) {
+    g.append(el("line", { class: "tr-mid", x1: sc.X(s.from), x2: sc.X(s.to),
+      y1: sc.Y(s.y0), y2: sc.Y(s.y1),
+      stroke: "var(--warning)", "stroke-width": 1.4, "stroke-dasharray": "5 4", opacity: .85 }));
+    g.append(el("line", { x1: sc.X(s.at), x2: sc.X(s.at), y1: T, y2: H - B,
+      stroke: "var(--text-muted)", "stroke-width": .5, opacity: .45, class: "trend-mark" }));
+  }
+  trendFuture(g, sc);
+  // 點圖而不是折線：收盤價本來就是一天一個點，連起來會假裝中間那段也有資料
+  const n = sc.vis.length;
+  const r = n > 800 ? 1.1 : n > 220 ? 1.7 : n > 90 ? 2.4 : 3.2;
+  for (const p of sc.vis) {
+    g.append(el("circle", { class: "tr-pt", cx: sc.X(p.d), cy: sc.Y(p.c), r,
+      fill: "var(--series-1)" }));
+  }
+  return g;
+}
+
+function trendFuture(g, sc) {
+  const { T, H, B } = TREND_BOX;
+  const s = sc.segs[sc.segs.length - 1];
+  if (s.to <= sc.today) return;
+  const a = sc.today > s.from ? sc.today : s.from;
+  // 今天之後那一截沒有股價可以對照，帶子邊緣畫成虛線，免得看起來像已經發生的事
+  for (const k of [-1, 1]) {
+    g.append(el("path", { class: "tr-future",
+      d: `M${sc.X(a)},${sc.Y(segY(s, a) + k * s.sigma)} L${sc.X(s.to)},${sc.Y(segY(s, s.to) + k * s.sigma)}`,
+      fill: "none", stroke: "var(--warning)", "stroke-width": 1.2, "stroke-dasharray": "3 3" }));
+  }
+  g.append(el("line", { class: "tr-today", x1: sc.X(sc.today), x2: sc.X(sc.today),
+    y1: T, y2: H - B, stroke: "var(--text-primary)", "stroke-width": 1,
+    "stroke-dasharray": "2 4", opacity: .6 }));
+  // 這條白線是「今天」，不是財報日。沒標字的時候，最後一個股價點碰到它會被誤認成碰到右邊的財報線
+  const lab = el("text", { class: "axis-txt tr-today-lab", x: sc.X(sc.today) - 7, y: T + 13,
+    "text-anchor": "end" });
+  lab.textContent = `今天 ${sc.today}`;
+  g.append(lab);
+}
+
+let trendSc = null;
+
+function drawTrend(t, from) {
+  const { W, H, L, R, T, B } = TREND_BOX;
+  const sc = trendScale(t, from);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none",
+    role: "img", "aria-label": "股價與合理區間軌道" });
+
+  const clip = el("clipPath", { id: "trendClip" });
+  clip.append(el("rect", { x: L, y: 0, width: W - L - R, height: H - B }));
+  const defs = el("defs");
+  defs.append(clip);
+  svg.append(defs);
+
+  trendAxes(svg, sc);
+  svg.append(trendBody(sc));
+  svg.append(el("rect", { class: "tr-sel", x: 0, y: T, width: 0, height: H - T - B,
+    fill: "var(--series-1)", opacity: .15 }));
+  svg.append(el("line", { class: "tr-x", x1: 0, x2: 0, y1: T, y2: H - B,
+    stroke: "var(--text-primary)", "stroke-width": .7, opacity: 0 }));
+  svg.append(el("circle", { class: "tr-dot", r: 4, cx: 0, cy: 0,
+    fill: "var(--series-1)", opacity: 0 }));
+
+  $("#trendChart").replaceChildren(svg);
+  trendXLabels(svg, sc);   // 要量字寬，得等 svg 真的進到畫面上
+  trendSc = sc;
+  wireTrend(t);
+}
+
+function trendHint(years) {
+  return `← 在圖上滑動看當天股價；<strong>按住往旁邊拖</strong>可以框一段出來，
+    數字會改用那段的<strong>結尾往前 ${years} 年</strong>重算`;
+}
+
+function wireTrend(t) {
+  const box = $("#trendChart"), read = $("#trendRead");
+  const svg = box.querySelector("svg");
+  const vx = e => (e.clientX - svg.getBoundingClientRect().left)
+    / svg.getBoundingClientRect().width * TREND_BOX.W;
+  let anchor = null;
+
+  box.onpointermove = e => {
+    const d = trendSc.dateAt(vx(e));
+    const p = trendSc.vis.reduce((a, b) =>
+      Math.abs(dayGap(b.d, d)) < Math.abs(dayGap(a.d, d)) ? b : a);
+    for (const [sel, at] of [[".tr-x", { x1: trendSc.X(d), x2: trendSc.X(d), opacity: .5 }],
+                             [".tr-dot", { cx: trendSc.X(p.d), cy: trendSc.Y(p.c), opacity: 1 }]]) {
+      for (const k in at) svg.querySelector(sel).setAttribute(k, at[k]);
+    }
+    if (anchor) trendBand(svg, anchor, d);
+    const last = trendSc.segs[trendSc.segs.length - 1];
+    read.innerHTML = (d > trendSc.today
+      ? `<b>${esc(d)}</b>　還沒發生 —— 軌道中心預估 <b>$${segY(last, d).toFixed(2)}</b>`
+      : `<b>${esc(p.d)}</b>　當天股價 <b>$${p.c}</b>`)
+      + (anchor ? `　框選中：${esc(anchor < d ? anchor : d)} ～ ${esc(anchor < d ? d : anchor)}` : "");
+  };
+  box.onpointerleave = () => {
+    for (const sel of [".tr-x", ".tr-dot"]) svg.querySelector(sel).setAttribute("opacity", 0);
+    read.innerHTML = trendHint(t.years);
+  };
+  box.onpointerdown = e => {
+    anchor = clampDay(trendSc.dateAt(vx(e)), trendSc.d0, trendSc.today);
+    box.setPointerCapture(e.pointerId);
+  };
+  box.onpointerup = e => {
+    // 基準日不能是未來 —— 那天的股價還不存在
+    const d = clampDay(trendSc.dateAt(vx(e)), trendSc.d0, trendSc.today), a = anchor;
+    anchor = null;
+    trendBand(svg, d, d);
+    if (a && Math.abs(dayGap(a, d)) >= TREND_MIN_DRAG_DAYS) {
+      trendFrom = a < d ? a : d;
+      loadValu(valuYears, a < d ? d : a);
+    }
+  };
+}
+
+function trendBand(svg, a, b) {
+  const x = [trendSc.X(a), trendSc.X(b)];
+  svg.querySelector(".tr-sel").setAttribute("x", Math.min(...x));
+  svg.querySelector(".tr-sel").setAttribute("width", Math.abs(x[1] - x[0]));
+}
+
+function resetTrend() {
+  trendFrom = "";
+  loadValu(valuYears, "");
+}
+
+function peTrapHTML(t) {
+  if (!t) return "";
+  return `<div class="pe-trap" id="peTrap">⚠️ <strong>這個百分位不能當成「便宜」。</strong>
+    這 ${t.years} 年盈餘漲了 <strong>${t.earnings_x} 倍</strong>，股價只漲 <strong>${t.price_x} 倍</strong>
+    —— 本益比是被<strong>分母</strong>壓下去的，不是股價變便宜。
+    分母是<strong>過去 12 個月已經賺到的錢</strong>；公司賺錢賺到高峰的那一刻，本益比一定最低。
+    該問的不是「現在第幾 %」，是<strong>這個盈餘撐不撐得住</strong>。</div>`;
+}
+
+const MARK = { true: ["✅", "var(--good)"], false: ["❌", "var(--critical)"], null: ["➖", "var(--text-muted)"] };
+
+function qualityHTML(rows) {
+  const ok = rows.filter(r => r.ok === true).length;
+  const bad = rows.filter(r => r.ok === false).length;
+  const row = r => {
+    const [mark, color] = MARK[r.ok];
+    const v = r.value === null ? "—"
+      : `${r.value > 0 ? "+" : ""}${r.value}${esc(r.unit)}`;
+    return `<div class="qa-row"><span class="qm">${mark}</span>
+      <span class="qk">${esc(r.ask)}</span>
+      <span class="qv" style="color:${color}">${v}</span>
+      <span class="qt">${esc(r.text)}<br><em class="qb">比的是：${esc(r.basis)}</em></span></div>`;
+  };
+  // 結論只看紅燈有幾個。四題全過也不代表該買，只代表「低本益比這件事目前不是陷阱」
+  const sum = bad === 0
+    ? `<strong style="color:var(--good)">四題沒有一題亮紅燈</strong> —— 分母目前撐得住，
+       那本益比低就比較接近真的便宜，而不是盈餘高峰造成的假象。`
+    : bad >= 3
+      ? `<strong style="color:var(--critical)">四題裡有 ${bad} 題亮紅燈</strong> —— 分母正在鬆動。
+         盈餘只要往下一點，本益比自己就會彈回去，股價一毛都不用漲。這種「便宜」最貴。`
+      : `<strong style="color:var(--warning)">四題裡有 ${bad} 題亮紅燈、${ok} 題過關</strong> ——
+         混合訊號。紅燈那幾題就是接下來每一季財報要盯的地方。`;
+  return `<div class="qa">${rows.map(row).join("")}</div>
+    <div class="qa-sum">${sum}</div>`;
+}
+
+function fairHTML(f, years, pe) {
+  const cell = (k, sub, x, when) => `<div class="fair-cell">
+    <div class="fk">${esc(k)}</div>
+    <div class="fs" style="color:var(--text-muted)">${esc(sub)}（本益比 ${x.pe}）</div>
+    <div class="fv">$${x.price}</div>
+    <div class="fs" style="color:${x.gap >= 0 ? "var(--good)" : "var(--critical)"}">
+      離現在 ${x.gap > 0 ? "+" : ""}${x.gap}%</div>
+    ${when ? `<div class="fs" style="color:var(--text-muted)">上次是 ${esc(when)}</div>` : ""}
+  </div>`;
+  return `<div class="caveat" style="margin:0 0 10px">現在 <b class="hot">$${f.now}</b>，
+      滾動一年每股盈餘 <b class="hot">$${f.eps}</b>。下面是<strong>假設盈餘一動不動</strong>，
+      只有<strong>市場的態度</strong>回到這 ${years} 年的三種狀態時，股價會是多少。</div>
+    <div class="caveat" style="margin:0 0 10px">「冷」和「熱」講的是<strong>市場願意為同樣的盈餘付多少錢</strong>，
+      不是股價高低。<strong>冷＝市場最不捧場</strong>（同樣賺 1 元只肯付 ${f.low.pe} 元），
+      <strong>熱＝市場最捧場</strong>（同樣賺 1 元肯付 ${f.high.pe} 元）。
+      所以「最冷」那一格是<strong>最悲觀的情境</strong>，不是「合理價」。</div>
+    <div class="fair">${cell("市場最不捧場", "這 " + years + " 年最冷", f.low, pe.low_at)}${
+      cell("市場態度回到中間", "這 " + years + " 年的中位數", f.mid, "")}${
+      cell("市場最捧場", "這 " + years + " 年最熱", f.high, pe.high_at)}</div>
+    <div class="caveat" style="margin-top:10px">⚠️ 這是<strong>除法，不是預測，更不是目標價</strong>。
+      三個數字全部建立在「盈餘不變」上，而盈餘一定會變 ——
+      上面四題就是在看它接下來比較可能往哪邊變。
+      另外這 ${years} 年的本益比區間是<strong>過去的市場情緒</strong>，
+      公司的成長速度換了一檔，市場願意付的倍數本來就不會回到原位。</div>`;
+}
+
+function valuHTML(d) {
+  const p = d.pe;
+  const m = d.margins;
+  const span = `${esc(d.from)} ～ ${esc(d.to)}`;
+  const years = Array.from({ length: d.years_max - d.years_min + 1 }, (_, i) => d.years_min + i);
+  return `<div class="valu-years">
+      <label>回看幾年</label>
+      <div class="ranges" id="valuYears" role="group" aria-label="回看幾年">
+        ${years.map(y => `<label><input type="radio" name="valuYears" value="${y}"
+          ${y === d.years ? "checked" : ""}><span>${y} 年</span></label>`).join("")}
+      </div>
+    </div>
+
+    ${d.asof ? `<div class="caveat" style="margin:-4px 0 10px">🕘 <strong>你框了一段回去看</strong>：
+      底下所有數字都退回 <strong>${esc(d.to)}</strong> 那天為止，${esc(d.to)} 之後的股價完全沒被用到。
+      本益比區間是從那天<strong>往前 ${d.years} 年</strong>。</div>` : ""}
+
+    <h3>本益比：${d.asof ? `${esc(d.to)} 當時` : "現在"} ${p.now}，這 ${d.years} 年區間 ${p.low} – ${p.high}</h3>
+    <div class="valu-now"><b>${p.now}</b><span>落在 ${d.years} 年區間的第 <b>${p.pct}%</b>
+      ${p.pct >= 80 ? "比自己平常熱" : p.pct <= 20 ? "比自己平常冷" : "跟自己平常差不多"}</span></div>
+    ${peTrapHTML(p.trap)}
+    ${rangeBar(`本益比 ${d.years} 年區間`, p.low, p.high, p.now)}
+    <div class="caveat" style="margin:0 0 10px">最低 <b>${p.low}</b> 出現在 <b>${esc(p.low_at)}</b>，
+      最高 <b>${p.high}</b> 出現在 <b>${esc(p.high_at)}</b>。
+      換「回看幾年」區間沒變的話，代表<strong>這兩天都落在比較短的那段期間裡</strong> —— 拉桿沒壞。</div>
+    ${peSparkHTML(p)}
+    <div class="caveat">走勢是 ${span} 的本益比。本益比 = 當天股價 ÷ 當時<strong>市場已經知道</strong>的
+      滾動一年每股盈餘（四季相加，用<strong>財報真正的公布日</strong>算時間差，不是估一個固定天數）。
+      共用到 ${d.eps_points} 個季度盈餘數字。</div>
+
+    <h3>這個盈餘撐不撐得住？（本益比的分母體檢）</h3>
+    <div class="caveat" style="margin:-4px 0 10px">本益比 = 股價 ÷ 盈餘。盈餘是<strong>分母</strong>。
+      分母撐不住，本益比自己就會彈回去 —— 股價一毛都不用漲。四題全是除法，沒有預測。<br>
+      ⏱️ 這四題<strong>永遠看最新的一段，不跟著上面的「回看幾年」動</strong>。
+      那根拉桿管的是「本益比區間有多寬」，這裡問的是「公司現在的體質」，兩件事。<br>
+      比法一律是<strong>跟一年前的同一個位置比（同期比）</strong>，不是跟上一季比 ——
+      多數公司有淡旺季，拿 Q4 比 Q3 量到的是季節，不是體質。每一列下面都寫了實際比的是哪兩段。</div>
+    ${qualityHTML(d.quality)}
+
+    <h3>如果盈餘不變，本益比回到常態會是多少錢？</h3>
+    ${fairHTML(d.fair, d.years, d.pe)}
+
+    <h3>這 ${d.years} 年，股價漲跌是從哪來的？</h3>
+    <div class="caveat" style="margin:-4px 0 8px">${span}，跟上面的本益比是同一段時間。</div>
+    ${splitHTML(d.split)}
+
+    <h3>公司本身：營收與利潤率（近 ${m.length} 個財年）</h3>
+    <div class="valu-grid">${m.map(r => `<div class="valu-cell">
+      <div class="vy">${esc(r.year)} 財年</div>
+      <div class="vv">${money(r.revenue)}</div>
+      <div class="vs">營收年增 ${r.revenue_growth === undefined ? "—"
+        : `<span style="color:${r.revenue_growth >= 0 ? "var(--good)" : "var(--critical)"}">${
+          r.revenue_growth > 0 ? "+" : ""}${r.revenue_growth}%</span>`}</div>
+      <div class="vs">毛利率 ${r.gross_margin ?? "—"}%</div>
+    </div>`).join("")}</div>
+
+    ${trendHTML(d)}
+
+    <div class="caveat" style="margin-top:22px">⚠️ <strong>「貴」不是賣出訊號</strong> —— 好公司可以貴十年，
+      用「貴」當訊號賣掉微軟的人錯過了十倍。這張卡只回答「現在是不是比自己平常更熱」，
+      用來決定<strong>這次買多少</strong>，不是「買不買」。<br>
+      盈餘用 Finnhub 的季度數字四季相加（滾動一年），營收與毛利率來自 Yahoo 的年度損益表。</div>`;
+}
+
+let valuYears = 5;
+// 基準日：空的就是看今天。框選之後才有值，所有數字都退回那天為止重算
+let valuEnd = "";
+// 軌道圖只是「放大看哪一段」，純顯示用，不影響任何數字
+let trendFrom = "";
+
+function openValu() {
+  if (!chart.symbol) return;
+  $("#valuTitle").textContent = `${chart.symbol} 估值`;
+  $("#valuModal").classList.remove("hidden");
+  valuEnd = trendFrom = "";
+  loadValu(valuYears, "");
+}
+
+function loadValu(years, end = valuEnd) {
+  valuYears = years;
+  valuEnd = end;
+  $("#valuBody").innerHTML = `<div class="loading">計算中…</div>`;
+  fetch(`/api/valuation?symbol=${encodeURIComponent(chart.symbol)}&years=${years}&end=${end}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) throw new Error(d.error);
+      $("#valuBody").innerHTML = valuHTML(d);
+      wirePeSpark(d.pe);
+      if (!d.trend.error) drawTrend(d.trend, trendFrom);
+      $("#valuYears").onchange = e => loadValu(+e.target.value);
+    })
+    .catch(err => {
+      $("#valuBody").innerHTML = `<div class="err">✕ 估值算不出來：${esc(err.message)}</div>
+        <div class="caveat">最常見的原因是這家公司在虧損 —— 每股盈餘是負的，本益比就沒有意義。</div>`;
+    });
+}
+function closeValu() { $("#valuModal").classList.add("hidden"); }
+
+/* ---------- 恐慌指數 vs 股價：兩條線、兩個刻度 ---------- */
+const VIX_LEVELS = [
+  [30, "😱 市場在恐慌", "var(--critical)"],
+  [20, "😬 開始緊張", "var(--warning)"],
+  [0, "😌 平靜", "var(--good)"],
+];
+
+function vixVerdict(c) {
+  if (c <= -0.5) return `恐慌指數往上的那幾天，這支<strong>幾乎都在跌</strong>（相關係數 ${c}）—— 它跟著整個市場的情緒走。`;
+  if (c <= -0.2) return `恐慌指數往上時，這支<strong>偏向下跌</strong>，但沒有那麼一致（相關係數 ${c}）。`;
+  if (c < 0.2) return `這支跟恐慌指數<strong>幾乎沒關係</strong>（相關係數 ${c}）—— 它漲跌的原因多半是自己的事。`;
+  return `少見：恐慌指數往上時這支反而<strong>偏向上漲</strong>（相關係數 ${c}）。避險性質的股票才會這樣。`;
+}
+
+function vixHTML(d) {
+  const [, mood, color] = VIX_LEVELS.find(([v]) => d.vix_now >= v);
+  const ranges = chart.ranges.map(x =>
+    `<label><input type="radio" name="vrange" value="${x.key}"${x.key === vixRange ? " checked" : ""}>
+      <span>${esc(x.label)}</span></label>`).join("");
+  const up = d.pct >= 0;
+  return `<div class="vix-head">
+      <div class="vix-stat">
+        <div class="vs-k">${esc(d.symbol)} · ${esc(d.label)}</div>
+        <div class="vs-v" style="color:${up ? "var(--good)" : "var(--critical)"}">${up ? "▲ +" : "▼ "}${d.pct}%</div>
+      </div>
+      <div class="vix-stat">
+        <div class="vs-k">VIX 現在</div>
+        <div class="vs-v" style="color:${color}">${d.vix_now}<small>${mood}</small></div>
+      </div>
+      <div class="ranges chart-ranges" id="vixRanges" role="group" aria-label="恐慌指數區間">${ranges}</div>
+    </div>
+    <div id="vixChart"></div>
+    <div class="vix-legend">
+      <span><i class="lg-line" style="background:${up ? "var(--good)" : "var(--critical)"}"></i>${esc(d.symbol)} 股價　<em>左軸</em></span>
+      <span><i class="lg-area"></i>VIX 恐慌指數　<em>右軸　這段期間 ${d.vix_low}–${d.vix_high}</em></span>
+    </div>
+    <div class="vix-verdict">${vixVerdict(d.corr)}</div>
+    <details class="explain"><summary>VIX 是什麼？這張圖怎麼看？</summary>
+      <div class="explainbody">
+        <p>VIX 是<strong>整個市場對「未來 30 天會不會大震盪」的下注價格</strong>。
+          它不是股票，不分漲跌方向 —— 大跌和大漲都會讓它變高，只是大跌時高得多。</p>
+        <ul>
+          <li><strong>20 以下</strong>：平靜，市場覺得沒什麼事</li>
+          <li><strong>20–30</strong>：緊張，開始有人花錢避險</li>
+          <li><strong>30 以上</strong>：恐慌，通常伴隨全市場大跌</li>
+        </ul>
+        <p><strong>相關係數</strong>是「兩邊每天的漲跌方向有多同步」，範圍 -1 到 +1。
+          -1 是完全反向，0 是毫無關係。這段期間用了 ${d.days} 個交易日算出來。</p>
+        <p>⚠️ 相關不等於因果，而且<strong>這是在看過去</strong>。VIX 現在低不代表接下來不會有事 ——
+          它反映的是市場「此刻的想法」，而市場經常想錯。</p>
+      </div></details>`;
+}
+
+function drawVix(d) {
+  const W = 1230, H = 360, L = 62, R = 52, T = 18, B = 30;
+  const pts = d.points;
+  const scale = vals => {
+    const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.12 || 1;
+    const [a, b] = [lo - pad, hi + pad];
+    return { a, b, y: v => T + (b - v) / (b - a) * (H - T - B) };
+  };
+  const price = scale(pts.map(p => p.close));
+  const fear = scale(pts.map(p => p.vix));
+  const X = i => L + i * (W - L - R) / (pts.length - 1);
+  const uid = "v" + Math.random().toString(36).slice(2, 8);
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `${d.symbol} 股價與 VIX 恐慌指數 ${d.label}對照` });
+
+  const defs = el("defs");
+  const grad = el("linearGradient", { id: uid, x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.appendChild(el("stop", { offset: "0%", "stop-color": "var(--warning)", "stop-opacity": .30 }));
+  grad.appendChild(el("stop", { offset: "100%", "stop-color": "var(--warning)", "stop-opacity": .02 }));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  for (let k = 0; k <= 3; k++) {
+    const pv = price.a + (price.b - price.a) * k / 3;
+    svg.appendChild(el("line", { x1: L, x2: W - R, y1: price.y(pv), y2: price.y(pv),
+      stroke: "var(--grid)", "stroke-width": 1 }));
+    const lt = el("text", { x: L - 7, y: price.y(pv) + 3.5, "text-anchor": "end", class: "axis-txt" });
+    lt.textContent = "$" + pv.toFixed(0);
+    const rt = el("text", { x: W - R + 7, y: fear.y(fear.a + (fear.b - fear.a) * k / 3) + 3.5,
+      class: "axis-txt vix-tick" });
+    rt.textContent = (fear.a + (fear.b - fear.a) * k / 3).toFixed(0);
+    svg.append(lt, rt);
+  }
+
+  // VIX 先畫、當背景色塊；股價後畫、實線在上面。主角是搜尋的那支股票。
+  const line = key => pts.map((p, i) => (i ? "L" : "M") + X(i) + "," + (key === "vix" ? fear : price).y(p[key])).join(" ");
+  svg.appendChild(el("path", {
+    d: `${line("vix")} L${X(pts.length - 1)},${H - B} L${X(0)},${H - B} Z`,
+    fill: `url(#${uid})`, stroke: "none",
+  }));
+  svg.appendChild(el("path", {
+    d: line("vix"), fill: "none", stroke: "var(--warning)", "stroke-width": 1.1,
+    opacity: .45, "stroke-linejoin": "round",
+  }));
+  svg.appendChild(el("path", {
+    d: line("close"), fill: "none", stroke: d.pct >= 0 ? "var(--good)" : "var(--critical)",
+    "stroke-width": 2.2, "stroke-linejoin": "round", "stroke-linecap": "round",
+  }));
+
+  const step = Math.max(1, Math.ceil(pts.length / 6));
+  pts.forEach((p, i) => {
+    if (i % step && i !== pts.length - 1) return;
+    // 頭尾靠邊對齊，不然會壓到左右兩側的刻度數字
+    const t = el("text", { x: X(i), y: H - 6, class: "axis-txt",
+      "text-anchor": i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle" });
+    t.textContent = axisLabel(p.t, d.intraday);
+    svg.appendChild(t);
+  });
+
+  // 兩條線共用一條垂直線，各自一顆點 —— 同一天的股價和恐慌指數要一起讀才有意義
+  const cross = el("line", { y1: T, y2: H - B, stroke: "var(--axis)", "stroke-width": 1,
+    "stroke-dasharray": "3 3", opacity: 0 });
+  const pdot = el("circle", { r: 4.5, fill: d.pct >= 0 ? "var(--good)" : "var(--critical)",
+    stroke: "var(--surface-1)", "stroke-width": 2, opacity: 0 });
+  const vdot = el("circle", { r: 4, fill: "var(--warning)",
+    stroke: "var(--surface-1)", "stroke-width": 2, opacity: 0 });
+  svg.append(cross, pdot, vdot);
+
+  const tip = $("#tip");
+  svg.addEventListener("pointermove", ev => {
+    const b = svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(pts.length - 1,
+      Math.round(((ev.clientX - b.left) / b.width * W - L) / ((W - L - R) / (pts.length - 1)))));
+    const p = pts[i];
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
+    pdot.setAttribute("cx", X(i)); pdot.setAttribute("cy", price.y(p.close)); pdot.setAttribute("opacity", 1);
+    vdot.setAttribute("cx", X(i)); vdot.setAttribute("cy", fear.y(p.vix)); vdot.setAttribute("opacity", 1);
+    tip.innerHTML = `<div class="th">${esc(tipLabel(p.t, d.intraday))}</div>
+      <div class="tr2">${esc(d.symbol)} 股價 $${p.close.toFixed(2)}</div>
+      <div class="tr2" style="color:var(--warning)">VIX 恐慌指數 ${p.vix.toFixed(2)}</div>`;
+    tip.style.opacity = 1;
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - 280) + "px";
+    tip.style.top = (ev.clientY - 68) + "px";
+  });
+  svg.addEventListener("pointerleave", () => {
+    tip.style.opacity = 0;
+    [cross, pdot, vdot].forEach(e => e.setAttribute("opacity", 0));
+  });
+
+  $("#vixChart").replaceChildren(svg);
+}
+
+// 預設區間由後端的 DEFAULT_CHART_RANGE 決定，載入設定時一起填進來
+let vixRange = "";
+// 抓幾天的新聞。使用者不選，由 config 的 DEFAULT_NEWS_DAYS 說了算
+let newsDays = 0;
+
+function loadVix(range) {
+  vixRange = range;
+  $("#vixBody").innerHTML = `<div class="loading">讀取恐慌指數…</div>`;
+  fetch(`/api/vix?symbol=${encodeURIComponent(chart.symbol)}&range=${range}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) throw new Error(d.error);
+      $("#vixBody").innerHTML = vixHTML(d);
+      drawVix(d);
+      $("#vixRanges").onchange = e => loadVix(e.target.value);
+    })
+    .catch(err => {
+      $("#vixBody").innerHTML = `<div class="err">✕ 恐慌指數載入失敗：${esc(err.message)}</div>`;
+    });
+}
+
+function openVix() {
+  if (!chart.symbol) return;
+  $("#vixTitle").textContent = `${chart.symbol} vs 恐慌指數`;
+  $("#vixModal").classList.remove("hidden");
+  loadVix(vixRange);
+}
+function closeVix() { $("#vixModal").classList.add("hidden"); $("#tip").style.opacity = 0; }
+
+$("#valuClose").onclick = closeValu;
+$("#valuModal").onclick = e => { if (e.target.id === "valuModal") closeValu(); };
+addEventListener("keydown", e => { if (e.key === "Escape") { closeHeat(); closeCal(); closeValu(); closeVix(); closeRot(); } });
+
+/* ---------- 走勢圖：自己的時間區間，跟新聞天數無關 ---------- */
+const chart = { symbol: null, name: "", logo: "", sector: "", basics: null, range: "", data: null, ranges: [] };
+
+fetch("/api/ranges").then(r => r.json()).then(cfg => {
+  newsDays = cfg.news_days;
+  chart.ranges = cfg.chart;
+  chart.range = vixRange = cfg.chart_default;
+  $("#chartRanges").innerHTML = cfg.chart.map(x =>
+    `<label><input type="radio" name="crange" value="${x.key}"${x.key === chart.range ? " checked" : ""}>
+     <span>${esc(x.key)}</span></label>`).join("");
+  $("#chartRanges").onchange = e => loadChart(e.target.value);
+});
+
+function loadChart(range) {
+  chart.range = range;
+  if (!chart.symbol) return;
+  $("#chart").innerHTML = `<div class="loading">載入 ${esc(range)} 走勢…</div>`;
+  fetch(`/api/chart?symbol=${encodeURIComponent(chart.symbol)}&range=${range}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) throw new Error(d.error);
+      chart.data = d;
+      renderQuote();
+      drawChart(d);
+      // 報告還沒回來時產業是未知的，這時算出來的判語是拿大盤湊數的，兩秒後又會跳掉。
+      // 寧可晚一點出現，也不要先給一個可能結論相反的句子。render() 會補這一次。
+      if (chart.basics) loadCompare();
+      loadBuyback();
+    })
+    .catch(err => {
+      $("#chart").innerHTML = `<div class="err">✕ 走勢圖載入失敗：${esc(err.message)}</div>`;
+    });
+}
+
+function rangeBar(title, lo, hi, now) {
+  if (!(lo > 0 && hi > lo && now > 0)) return "";
+  const p = Math.min(100, Math.max(0, (now - lo) / (hi - lo) * 100));
+  // 中間價位是分界：低於一半走綠系（145→90），高於一半走紅系（45→0），各半段內自己漸層。
+  const hue = p < 50 ? 145 - p / 50 * 55 : 45 - (p - 50) / 50 * 45;
+  const neon = `hsl(${hue.toFixed(0)} 100% 58%)`;
+  return `<div class="rbar">
+    <div class="rtitle"><span>${title}</span>
+      <span class="rlohi">${lo.toFixed(2)}–${hi.toFixed(2)}</span>
+      <span class="rpct" style="color:${neon};text-shadow:0 0 7px ${neon}">${p.toFixed(0)}%</span></div>
+    <div class="rtrack"><div class="rdot" style="left:${p}%;background:${neon};
+      box-shadow:0 0 0 2px var(--surface-1), 0 0 8px 2px ${neon}"></div></div>
+  </div>`;
+}
+
+function renderQuote() {
+  const d = chart.data;
+  if (!d) return;
+  const up = d.change >= 0;
+  const c = up ? "var(--good)" : "var(--critical)";
+  const b = chart.basics || {};
+  const now = b.price || d.last;
+  const bars = rangeBar("今日區間", b.day_low, b.day_high, now)
+    + rangeBar("52 週區間", b.year_low, b.year_high, now);
+  $("#quote").innerHTML = `
+    <div class="idline">
+      <span class="sym">${esc(chart.symbol)}</span>
+      ${chart.name ? `<span class="co">${esc(chart.name)}</span>` : ""}
+      ${chart.logo ? `<span class="logobox"><img src="${esc(chart.logo)}" alt=""
+        onerror="this.parentNode.remove()"></span>` : ""}
+      ${bars ? `<div class="hilo">${bars}</div>` : ""}</div>
+    <div class="last">$${d.last.toFixed(2)}
+      <span class="delta" style="color:${c}">${up ? "▲ +" : "▼ "}${d.change.toFixed(2)} (${up ? "+" : ""}${d.pct}%)</span>
+      <span class="span">${esc(d.label)}內</span>
+    </div>`;
+}
+
+function drawChart(d) {
+  const W = 760, H = 300, L = 8, R = 92, T = 18, B = 30;
+  const pts = d.points;
+  if (pts.length < 2) { $("#chart").innerHTML = `<div class="nohit">資料點不足，畫不出走勢。</div>`; return; }
+
+  const vals = pts.map(p => p.close);
+  const lo = Math.min(...vals, d.first), hi = Math.max(...vals, d.first);
+  const pad = (hi - lo) * 0.12 || 1;
+  const y0 = lo - pad, y1 = hi + pad;
+  const X = i => L + i * (W - L - R) / (pts.length - 1);
+  const Y = v => T + (y1 - v) / (y1 - y0) * (H - T - B);
+  const up = d.change >= 0;
+  const c = up ? "var(--good)" : "var(--critical)";
+  const uid = "g" + Math.random().toString(36).slice(2, 8);
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${chart.symbol} ${d.label}走勢` });
+
+  const defs = el("defs");
+  const grad = el("linearGradient", { id: uid, x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.appendChild(el("stop", { offset: "0%", "stop-color": c, "stop-opacity": .22 }));
+  grad.appendChild(el("stop", { offset: "100%", "stop-color": c, "stop-opacity": 0 }));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  for (let k = 0; k <= 4; k++) {
+    const v = y0 + (y1 - y0) * k / 4;
+    svg.appendChild(el("line", { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: "var(--grid)", "stroke-width": 1 }));
+    const t = el("text", { x: W - R + 8, y: Y(v) + 4, class: "axis-txt" });
+    t.textContent = "$" + v.toFixed(2);
+    svg.appendChild(t);
+  }
+
+  // 區間起點的基準線 —— 漲跌百分比就是拿現價跟這條線比出來的
+  svg.appendChild(el("line", {
+    x1: L, x2: W - R, y1: Y(d.first), y2: Y(d.first),
+    stroke: "var(--text-muted)", "stroke-width": 1, "stroke-dasharray": "4 4", opacity: .7
+  }));
+
+  const line = pts.map((p, i) => (i ? "L" : "M") + X(i) + "," + Y(p.close)).join(" ");
+  svg.appendChild(el("path", {
+    d: `${line} L${X(pts.length - 1)},${Y(y0)} L${X(0)},${Y(y0)} Z`,
+    fill: `url(#${uid})`, stroke: "none"
+  }));
+  svg.appendChild(el("path", {
+    d: line, fill: "none", stroke: c, "stroke-width": 2,
+    "stroke-linejoin": "round", "stroke-linecap": "round"
+  }));
+
+  const step = Math.max(1, Math.ceil(pts.length / 6));
+  pts.forEach((p, i) => {
+    if (i % step && i !== pts.length - 1) return;
+    const t = el("text", { x: X(i), y: H - 8, "text-anchor": "middle", class: "axis-txt" });
+    t.textContent = axisLabel(p.t, d.intraday);
+    svg.appendChild(t);
+  });
+
+  const cross = el("line", { y1: T, y2: H - B, stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "3 3", opacity: 0 });
+  const dot = el("circle", { r: 4.5, fill: c, stroke: "var(--surface-1)", "stroke-width": 2, opacity: 0 });
+  svg.append(cross, dot);
+
+  const tip = $("#tip");
+  svg.addEventListener("pointermove", ev => {
+    const b = svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(pts.length - 1,
+      Math.round(((ev.clientX - b.left) / b.width * W - L) / ((W - L - R) / (pts.length - 1)))));
+    const p = pts[i];
+    const diff = p.close - d.first, dpct = diff / d.first * 100;
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
+    dot.setAttribute("cx", X(i)); dot.setAttribute("cy", Y(p.close)); dot.setAttribute("opacity", 1);
+    tip.innerHTML = `<div class="th">${esc(tipLabel(p.t, d.intraday))}</div>
+      <div class="tr2">$${p.close.toFixed(2)} · 比 ${esc(d.label)}前 ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} (${diff >= 0 ? "+" : ""}${dpct.toFixed(2)}%)</div>`;
+    tip.style.opacity = 1;
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - 280) + "px";
+    tip.style.top = (ev.clientY - 52) + "px";
+  });
+  svg.addEventListener("pointerleave", () => {
+    tip.style.opacity = 0; cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0);
+  });
+
+  $("#chart").innerHTML = "";
+  $("#chart").appendChild(svg);
+}
+
+const axisLabel = (iso, intraday) =>
+  intraday ? iso.slice(11, 16) : iso.slice(0, 10).slice(5);
+
+const tipLabel = (iso, intraday) =>
+  intraday ? iso.slice(0, 10) + " " + iso.slice(11, 16) : iso.slice(0, 10);
+</script>
+</body>
+</html>
