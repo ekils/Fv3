@@ -1,7 +1,21 @@
 """News Radar — 輸入代號，看著它把新聞抓回來，然後只留下值得看的。"""
 
 """
-.venv/bin/uvicorn app.main:app --port 8000
+cd /home/KGI_AI/cdib3935/DannyTest/Fv3
+python3 -m venv .venv                      # 已完成
+.venv/bin/pip install -r requirements.txt  # 已完成
+.venv/bin/python -m pytest tests/ -q       # 99 passed
+.venv/bin/uvicorn app.main:app --port 8745
+
+========Smoke test 步驟與實測結果========================================================================
+curl -i http://127.0.0.1:8745/                                           # 預期 307 轉去 /login → 實測 ✅
+
+curl -c ck -X POST http://127.0.0.1:8745/api/login \
+     -H 'Content-Type: application/json' -d '{"password":"你的密碼"}'
+                                                                         # 預期 {"ok":true} → 實測 ✅
+
+curl -b ck "http://127.0.0.1:8745/api/chart?symbol=AAPL"
+                                                                         # 實測 ✅ AAPL 9/28 分時線 341.72…
 """
 
 
@@ -20,6 +34,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from .analyze import build_report, peers_for, verdict_for
+from .ask import ground, reply, summarise
 from .buyback import build_buyback
 from .calendar import build_calendar
 from .macro import build_macro, series_for
@@ -28,18 +43,24 @@ from .trend import build_trend
 from .valuation import build_valuation, known_eps
 from .vix import build_vix
 from .config import (
+    ASK_HIGHLIGHTS,
+    ASK_MAX_QUESTION_CHARS,
+    ASK_SESSION_ROUNDS,
     ATTENTION_SPIKE_RATIO,
     CACHE_TTL_SECONDS,
     BENCHMARK_SYMBOL,
     RISK_EXTRA_SYMBOLS,
-    ROTATION_RANGES,
+    ROTATION_STEP_DAYS,
     ROTATION_SLOPE_DAYS,
     SECTOR_ETF,
     CHART_RANGES,
     DEFAULT_CHART_RANGE,
     DEFAULT_NEWS_DAYS,
+    SLICE_CONCLUSIONS,
+    SLICE_VERDICTS,
     VALUATION_MAX_YEARS,
     VALUATION_MIN_YEARS,
+    VALUATION_TABLE_ROWS,
     MAX_NEWS_DAYS,
     MIN_NEWS_DAYS,
     VIX_PERIOD_OVERRIDE,
@@ -71,8 +92,10 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 app = FastAPI(title="News Radar")
 _cache: dict[tuple[str, int], tuple[float, dict]] = {}
 # 資金流向跟個股無關，借用同一個快取。代號是空字串，不可能跟真的 (代號, 天數) 撞到
-def _rotation_key(days: int) -> tuple[str, int]:
-    return ("", days)
+_ROTATION_KEY = ("", 0)
+
+# 每個「登入者 × 代號」一段對話。放在記憶體裡，重開就忘光 —— 那正是 session 的意思。
+_ask_sessions: dict[tuple[str, str], dict] = {}
 
 # ETF 的成份股一季才換一次，而且只有滑過去才會去抓，所以自己一個小快取就夠
 _holdings_cache: dict[str, tuple[float, dict]] = {}
@@ -82,6 +105,20 @@ KNOWN_ETFS = {BENCHMARK_SYMBOL, *SECTOR_ETF.values(), *RISK_EXTRA_SYMBOLS}
 SESSION_COOKIE = "radar_session"
 LOGIN_BACKGROUNDS = ("purple", "amber", "sage")
 OPEN_PATHS = {"/login", "/api/login"} | {f"/login-bg-{n}.png" for n in LOGIN_BACKGROUNDS}
+
+
+def why(exc: Exception) -> str:
+    """把例外變成一句能貼到畫面上的話。
+
+    httpx 的錯誤訊息裡有完整網址，網址裡有 api_key —— 直接 str() 出去等於把金鑰
+    印在使用者螢幕上（已經真的發生過一次）。金鑰只從環境變數來，所以在這裡就地塗掉。
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    for name in ("FRED_API_KEY", "FINNHUB_API_KEY", "APP_PASSWORD", "ASK_API_KEY"):
+        secret = os.environ.get(name, "")
+        if secret:
+            text = text.replace(secret, "<已隱藏>")
+    return text[:200]
 
 
 def _session_token() -> str:
@@ -154,7 +191,7 @@ async def chart(symbol: str, range: str = DEFAULT_CHART_RANGE):
     try:
         return await fetch_chart(symbol, range)
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
 
 
 @app.get("/api/calendar")
@@ -172,7 +209,7 @@ async def calendar(year: int, month: int, symbol: str = "", sector: str = ""):
         try:
             earnings = await fetch_earnings(symbol, span - timedelta(days=365), span + timedelta(days=365))
         except Exception as exc:
-            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+            return JSONResponse({"error": why(exc)}, status_code=502)
 
     return build_calendar(year, month, sector, earnings)
 
@@ -190,7 +227,7 @@ async def compare(symbol: str, range: str = DEFAULT_CHART_RANGE, sector: str = "
     try:
         charts = await asyncio.gather(*(fetch_chart(s, range) for s, _ in [(symbol, "")] + peers))
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
 
     mine, *rest = charts
     rows = [{"symbol": s, "label": label, "pct": c["pct"]}
@@ -212,7 +249,7 @@ async def macro(sector: str = ""):
     try:
         raw = await fetch_fred(series_for(sector))
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
     return build_macro(sector, raw)
 
 
@@ -225,7 +262,7 @@ async def attention(symbol: str):
     try:
         days = await fetch_news_counts(symbol)
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
     counts = sorted(d["count"] for d in days)
     median = counts[len(counts) // 2]
     return {
@@ -241,7 +278,7 @@ def _trend_or_error(fin: dict, years: int) -> dict:
     try:
         return build_trend(fin, known_eps(fin["quarters"], fin["releases"]), years)
     except Exception as exc:
-        return {"error": f"{type(exc).__name__}: {exc}"[:200]}
+        return {"error": why(exc)}
 
 
 def _as_of(fin: dict, end: str) -> dict:
@@ -273,27 +310,82 @@ async def valuation(symbol: str, years: int = VALUATION_MAX_YEARS, end: str = ""
             fin = _as_of(fin, end)
         return {"symbol": symbol, "asof": bool(end),
                 "years_min": VALUATION_MIN_YEARS, "years_max": VALUATION_MAX_YEARS,
+                # 表格的列定義和結論文字都從 config 送出去。哪一列用 % 哪一列用個百分點，
+                # 是業務規則不是畫面細節 —— 前端自己記一份的話，兩邊遲早會對不上
+                "table_rows": [list(r) for r in VALUATION_TABLE_ROWS],
+                "slice_verdicts": SLICE_VERDICTS,
+                "slice_conclusions": {k: list(v) for k, v in SLICE_CONCLUSIONS.items()},
                 **build_valuation(fin, years), "trend": _trend_or_error(fin, years)}
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
 
 
 @app.get("/api/rotation")
-async def rotation(days: int = ROTATION_SLOPE_DAYS):
-    """錢正在從哪個板塊搬到哪個板塊。跟查哪支股票無關，所以同一個天數共用一份快取。"""
-    if days not in {n for _, n in ROTATION_RANGES}:
-        return JSONResponse({"error": f"沒有這個區間: {days} 天"}, status_code=400)
-    key = _rotation_key(days)
-    hit = _cache.get(key)
+async def rotation():
+    """錢正在從哪個板塊搬到哪個板塊。所有區間一次算完。
+
+    跟查哪支股票無關，所以全站共用一份快取。每個區間都只是拿同一份收盤價再做一次
+    除法，算 27 次的成本遠低於再跑一趟 Yahoo —— 前端才能用滑桿即時重畫，不必等網路。
+    """
+    hit = _cache.get(_ROTATION_KEY)
     if hit and time.time() - hit[0] < CACHE_TTL_SECONDS:
         return hit[1]
     try:
         raw = await fetch_rotation()
-        built = build_rotation(raw["closes"], raw["asof"], BENCHMARK_SYMBOL, days)
+        frames = [build_rotation(raw["closes"], raw["asof"], BENCHMARK_SYMBOL, d)
+                  for d in ROTATION_STEP_DAYS]
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
-    _cache[key] = (time.time(), built)
+        return JSONResponse({"error": why(exc)}, status_code=502)
+    built = {"default_days": ROTATION_SLOPE_DAYS, "frames": frames}
+    _cache[_ROTATION_KEY] = (time.time(), built)
     return built
+
+
+@app.post("/api/ask")
+async def ask(request: Request):
+    """法說會摘要，以及針對這家公司的追問。
+
+    沒帶 question 就是「剛打開視窗」，回一份摘要並開一段新的對話；帶了就是追問。
+    對話記在伺服器這邊、按 (登入者, 代號) 分開 —— 交給前端保管的話，歷史就變成
+    誰都能改的欄位，模型會照著被竄改的「上一輪你說過」往下講。
+    """
+    body = await request.json()
+    symbol = (body.get("symbol") or "").strip().upper()
+    if not SYMBOL_RE.match(symbol):
+        return JSONResponse({"error": f"代號格式不正確: {symbol}"}, status_code=400)
+    question = (body.get("question") or "").strip()
+    if len(question) > ASK_MAX_QUESTION_CHARS:
+        return JSONResponse(
+            {"error": f"問題太長了（{len(question)} 字），請縮到 {ASK_MAX_QUESTION_CHARS} 字以內"},
+            status_code=400)
+
+    key = (request.cookies.get(SESSION_COOKIE, ""), symbol)
+    try:
+        if not question:
+            out = await summarise(symbol)
+            _ask_sessions[key] = {"facts": out["facts"], "history": []}
+            return {"symbol": symbol, "name": out["name"], "quarter": out["quarter"],
+                    "answer": out["answer"], "sources": out["sources"],
+                    "searched": out["searched"], "rounds_left": ASK_SESSION_ROUNDS,
+                    "highlights": ASK_HIGHLIGHTS}
+
+        chat = _ask_sessions.get(key)
+        if not chat:
+            # 伺服器重開過，或者使用者跳過摘要直接問。事實要重抓，不能拿舊的湊
+            chat = {"facts": (await ground(symbol))["facts"], "history": []}
+            _ask_sessions[key] = chat
+        out = await reply(symbol, chat["facts"], chat["history"], question)
+    except Exception as exc:
+        return JSONResponse({"error": why(exc)}, status_code=502)
+
+    chat["history"] += [{"role": "user", "content": question},
+                        {"role": "assistant", "content": out["answer"]}]
+    # 只留最近幾輪。一輪＝一問一答＝兩則訊息
+    chat["history"] = chat["history"][-ASK_SESSION_ROUNDS * 2:]
+    return {"symbol": symbol, "answer": out["answer"], "sources": out["sources"],
+            "searched": out["searched"],
+            "rounds_left": ASK_SESSION_ROUNDS - len(chat["history"]) // 2,
+            "highlights": ASK_HIGHLIGHTS}
 
 
 @app.get("/api/holdings")
@@ -308,7 +400,7 @@ async def holdings(etf: str):
     try:
         rows = await fetch_holdings(etf)
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
     payload = {"etf": etf, "holdings": rows}
     _holdings_cache[etf] = (time.time(), payload)
     return payload
@@ -324,7 +416,7 @@ async def buyback(symbol: str):
         raw = await fetch_buyback(symbol)
         return {"symbol": symbol, **build_buyback(raw, raw["shares"][-1]["count"])}
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
 
 
 @app.get("/api/vix")
@@ -341,7 +433,7 @@ async def vix(symbol: str, range: str = DEFAULT_CHART_RANGE):
             fetch_chart(VIX_SYMBOL, range, VIX_PERIOD_OVERRIDE.get(range, "")))
         return {"symbol": symbol, **build_vix(stock, fear)}
     except Exception as exc:
-        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200]}, status_code=502)
+        return JSONResponse({"error": why(exc)}, status_code=502)
 
 
 @app.get("/api/ranges")
@@ -403,7 +495,7 @@ async def _run(symbol: str, days: int, queue: asyncio.Queue):
                 {
                     "type": "task_fail",
                     "id": tid,
-                    "error": f"{type(exc).__name__}: {exc}"[:200],
+                    "error": why(exc),
                     "ms": int((time.perf_counter() - t0) * 1000),
                 }
             )

@@ -95,7 +95,7 @@ def test_a_shorter_window_changes_the_numbers_but_not_the_row_order():
     best = lambda d: max(d["sectors"], key=lambda s: s["rs"])["etf"]
     assert best(long_) == "XLK"
     assert best(short) == "XLF"
-    assert short["range_label"] == "5 天"
+    assert short["range_label"] == "1 週"
 
 
 def test_the_row_order_is_the_config_order_and_never_gets_sorted():
@@ -112,3 +112,129 @@ def test_a_window_longer_than_the_data_raises_instead_of_using_the_oldest_row():
     except RuntimeError:
         return
     raise AssertionError("資料不夠還算得出來，那是編的")
+
+
+def test_risk_ratios_follow_the_same_window_as_the_sectors():
+    """拉桿只換上半部的話，下半部不管拉到哪都長一樣 —— 使用者會以為畫面壞了。"""
+    closes = market(XLY=ramp(100, 200), XLP=flat())
+    short = build_rotation(closes, "2026-09-25", "SPY", 5)
+    long_ = build_rotation(closes, "2026-09-25", "SPY", 252)
+    pick = lambda d: next(r for r in d["risk"] if r["pair"] == "XLY÷XLP")["move"]
+    assert pick(long_) > pick(short) > 0
+
+
+def test_the_ratio_line_starts_at_zero_and_ends_on_the_number_next_to_it():
+    """線的終點必須就是旁邊那個百分比，不然一張圖一個數字在講兩件事。"""
+    d = build_rotation(market(XLY=ramp(100, 200), XLP=flat()), "2026-09-25", "SPY", 20)
+    r = next(x for x in d["risk"] if x["pair"] == "XLY÷XLP")
+    assert len(r["line"]) == 21
+    assert r["line"][0] == 0.0
+    assert abs(r["line"][-1] - r["move"]) < 0.05
+
+
+def test_the_ratio_line_follows_the_slider():
+    """線不跟著拉桿變長的話，拉桿對下半部就是死的。"""
+    closes = market(XLY=ramp(100, 200), XLP=flat())
+    length = lambda days: len(next(
+        x for x in build_rotation(closes, "2026-09-25", "SPY", days)["risk"]
+        if x["pair"] == "XLY÷XLP")["line"])
+    assert length(130) == 131 and length(5) == 6
+
+
+def test_two_ratios_with_the_same_ending_can_still_have_different_lines():
+    """一路慢慢漲，跟先衝上去再摔回來 —— 期末數字一樣，但意思完全相反。
+    只給一個百分比的話這兩件事長得一模一樣，這就是要畫線的理由。"""
+    steady = market(XLY=ramp(100, 110, 300), XLP=flat())
+    spike = market(XLY=ramp(100, 140, 280) + ramp(140, 110, 20), XLP=flat())
+    pick = lambda c: next(x for x in build_rotation(c, "2026-09-25", "SPY", 40)["risk"]
+                          if x["pair"] == "XLY÷XLP")
+    a, b = pick(steady), pick(spike)
+    assert max(a["line"]) == a["line"][-1]  # 一路往上，最高點就是終點
+    assert max(b["line"]) > b["line"][-1]   # 中途更高，後來摔回來
+
+
+def test_rrg_puts_every_sector_on_the_same_two_axes():
+    """十一個板塊不是十一個維度 —— 每一個都只拿到 x、y 兩個座標。"""
+    d = build_rotation(market(), "2026-09-25", "SPY")
+    assert len(d["rrg"]) == len(SECTOR_ETF)
+    for p in d["rrg"]:
+        assert set(p) == {"etf", "label", "x", "y", "quadrant", "tail"}
+        assert isinstance(p["x"], float) and isinstance(p["y"], float)
+
+
+def test_a_sector_identical_to_the_market_sits_on_the_origin():
+    # 跟大盤一模一樣就是原點。強弱都談不上，不該被硬塞進四個象限裡任何一個
+    d = build_rotation(market(), "2026-09-25", "SPY")
+    p = d["rrg"][0]
+    assert (abs(p["x"]), abs(p["y"])) == (0.0, 0.0)
+    assert p["quadrant"] == "flat"
+
+
+def test_a_sector_pulling_away_from_the_market_lands_in_the_leading_quadrant():
+    # 注意：「一路直線上漲」不是領先。直線的話百分比成長會逐年遞減，動能是負的 ——
+    # 領先要的是「正在加速」，所以假資料必須是最近才起飛
+    d = build_rotation(market(XLK=[100.0] * 280 + ramp(100, 160, 20)), "2026-09-25", "SPY")
+    tech = next(p for p in d["rrg"] if p["etf"] == "XLK")
+    assert tech["x"] > 0 and tech["y"] > 0 and tech["quadrant"] == "lead"
+
+
+def test_a_steady_climb_is_not_mistaken_for_acceleration():
+    """一路等速上漲的板塊，動能不該是正的 —— 漲得久不等於漲得越來越快。"""
+    d = build_rotation(market(XLK=ramp(100, 300)), "2026-09-25", "SPY")
+    tech = next(p for p in d["rrg"] if p["etf"] == "XLK")
+    assert tech["x"] > 0 and tech["y"] < 0
+
+
+def test_a_sector_that_already_peaked_is_called_weakening_not_leading():
+    """還在大盤之上、但動能已經轉負 —— 這就是「錢開始撤了」，跟「領先」是兩件事。"""
+    rise_then_stall = ramp(100, 200, 270) + [200.0] * (DAYS - 270)
+    d = build_rotation(market(XLE=rise_then_stall), "2026-09-25", "SPY")
+    e = next(p for p in d["rrg"] if p["etf"] == "XLE")
+    assert e["x"] > 0 and e["y"] < 0 and e["quadrant"] == "weaken"
+
+
+def test_a_sector_falling_off_a_cliff_lands_in_the_lagging_quadrant():
+    d = build_rotation(market(XLU=[100.0] * 280 + ramp(100, 70, 20)), "2026-09-25", "SPY")
+    u = next(p for p in d["rrg"] if p["etf"] == "XLU")
+    assert u["x"] < 0 and u["y"] < 0 and u["quadrant"] == "lag"
+
+
+def test_the_end_of_the_tail_is_the_same_point_whatever_the_slider_says():
+    """終點是「今天在哪」，跟「往回看多久」無關。兩格看起來不一樣的話，
+    使用者會以為同一個板塊換個區間就走了不同的路。"""
+    closes = market(XLK=ramp(100, 300))
+    ends = {(p["x"], p["y"])
+            for d in (5, 20, 65, 130)
+            for p in build_rotation(closes, "2026-09-25", "SPY", d)["rrg"] if p["etf"] == "XLK"}
+    assert len(ends) == 1
+
+
+def test_a_short_tail_is_literally_the_tail_end_of_a_long_one():
+    """3 週的起點必須是 4 週走過的其中一個點 —— 兩條路是同一條路的不同長度，
+    不是兩條不同的路。平均切成固定份數的話，兩邊取到的點根本不重合。"""
+    closes = market(XLK=ramp(100, 300))
+    tail = lambda d: [(t["x"], t["y"]) for p in build_rotation(closes, "2026-09-25", "SPY", d)["rrg"]
+                      if p["etf"] == "XLK" for t in p["tail"]]
+    long_, short = tail(20), tail(15)
+    assert len(short) < len(long_)
+    assert short == long_[len(long_) - len(short):]
+    assert short[0] in long_
+
+
+def test_the_slider_makes_the_tail_cover_more_ground():
+    """尾巴不跟著拉桿變長的話，拉桿對上面那張圖就是死的。"""
+    closes = market(XLK=ramp(100, 300))
+    span = lambda days: max(
+        t["x"] for t in next(p for p in build_rotation(closes, "2026-09-25", "SPY", days)["rrg"]
+                             if p["etf"] == "XLK")["tail"]
+    ) - min(
+        t["x"] for t in next(p for p in build_rotation(closes, "2026-09-25", "SPY", days)["rrg"]
+                             if p["etf"] == "XLK")["tail"])
+    assert span(130) > span(5)
+
+
+def test_the_tail_always_ends_on_the_dot_you_can_see():
+    """尾巴最後一點必須就是現在的位置，不然軌跡會跟點對不起來。"""
+    d = build_rotation(market(XLK=ramp(100, 300)), "2026-09-25", "SPY", 63)
+    for p in d["rrg"]:
+        assert (p["tail"][-1]["x"], p["tail"][-1]["y"]) == (p["x"], p["y"])

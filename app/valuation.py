@@ -12,8 +12,16 @@ from statistics import median
 from .config import (
     PE_TRAP_EARNINGS_GROWTH,
     PE_TRAP_LEAD,
+    PRICE_VERDICT_BANDS,
+    PRICE_VERDICT_TAIL,
+    PRICE_VERDICT_TRAP,
     QUALITY_CHECKS,
+    SUPPORT_CONCLUSIONS,
+    SUPPORT_PROPPED_NOTE,
+    SLICE_FLAT_EPS,
+    SLICE_FLAT_SHARES,
     VALUATION_SPARK_POINTS,
+    VALUATION_TABLE_ROWS,
 )
 from .series import downsample
 
@@ -44,20 +52,97 @@ def _pct(now: float, before: float) -> float:
     return round((now / before - 1) * 100, 1)
 
 
-def _margins(rev: dict, gross: dict, net: dict) -> list[dict]:
+def _delta(unit: str, now: float | None, before: float | None) -> float | None:
+    """跟前一年比的變化。單位由 VALUATION_TABLE_ROWS 決定，這裡不自己猜。
+
+    「率」一定要用相減。淨利率 7.3% → 4.0% 拿去相除會印成 -45%，讀起來像公司少賺四成半，
+    但它只掉了 3.3 個百分點 —— 那是兩個百分比相除，同一個 % 符號被當成兩種意思用。
+    """
+    if now is None or before is None:
+        return None
+    if unit == "pp":
+        return round(now - before, 1)
+    # 去年是負的時候，除法的符號會跟直覺相反（虧 100 變賺 10 算出來是 -110%）——
+    # 那種年度寧可留白，也不要給一個看起來像答案的垃圾數字
+    return _pct(now, before) if before > 0 else None
+
+
+def _margins(rev: dict, gross: dict, net: dict, shares: dict) -> list[dict]:
+    """一個財年一列，新的在前。每一列都帶齊六個指標和它們跟前一年的變化。
+
+    每一列的 key 都寫滿（沒資料就是 None），所以畫面不用分「這個欄位存不存在」和
+    「這個欄位是不是空的」兩種情況 —— 只有一種情況：是不是 None。
+    """
     rows = []
     for d in sorted(rev, reverse=True):
         if not rev[d]:
             continue
+        n, s = net.get(d), shares.get(d)
         rows.append({
             "year": d[:4],
             "revenue": rev[d],
+            "net": n,
             "gross_margin": round(gross[d] / rev[d] * 100, 1) if d in gross else None,
-            "net_margin": round(net[d] / rev[d] * 100, 1) if d in net else None,
+            "net_margin": round(n / rev[d] * 100, 1) if n is not None else None,
+            "shares": s,
+            "eps": round(n / s, 2) if n is not None and s else None,
         })
-    for i, r in enumerate(rows[:-1]):
-        r["revenue_growth"] = _pct(r["revenue"], rows[i + 1]["revenue"])
+    for i, r in enumerate(rows):
+        prev = rows[i + 1] if i + 1 < len(rows) else {}
+        r["d"] = {key: _delta(unit, r[key], prev.get(key))
+                  for key, _, _, unit in VALUATION_TABLE_ROWS}
     return rows
+
+
+def slice_eps(margins: list[dict]) -> dict | None:
+    """每股盈餘的變化，拆成「餅變多大」跟「切成幾份」。
+
+    這兩個是不同的事，但畫面上只看得到相乘之後的結果。盈餘掉 47%、每股盈餘掉 52%，
+    中間差的那 5 個百分點不是誤差，是被多發的股票吃掉的 —— 不拆開就看不到它。
+    """
+    if len(margins) < 2:
+        return None
+    now, prev = margins[0], margins[1]
+    net, sh, eps = (now["d"][k] for k in ("net", "shares", "eps"))
+    if net is None or sh is None or eps is None:
+        return None
+    verdict = ("flat" if abs(sh) < SLICE_FLAT_SHARES
+               else "dilute" if sh > 0 else "buyback")
+    # 好還是不好，看的是「餅」跟「你那一份」往同一個方向走還是分岔。
+    # 分岔的兩種都不是好消息：一種是回購在撐，一種是稀釋在吃。
+    if abs(eps) < SLICE_FLAT_EPS:
+        conclusion = "flat"
+    elif eps > 0:
+        conclusion = "both_up" if net > 0 else "propped"
+    else:
+        conclusion = "both_down" if net < 0 else "diluted"
+    return {
+        "conclusion": conclusion,
+        "from_year": prev["year"], "to_year": now["year"],
+        "net": {"from": prev["net"], "to": now["net"], "pct": net},
+        "shares": {"from": prev["shares"], "to": now["shares"], "pct": sh},
+        "eps": {"from": prev["eps"], "to": now["eps"], "pct": eps},
+        # 股數害每股盈餘多掉（或多漲）了幾個百分點。正負號就是它幫忙還是扯後腿
+        "gap": round(eps - net, 1),
+        "verdict": verdict,
+    }
+
+
+def support_verdict(split: dict, quality: list[dict], sliced: dict | None) -> dict:
+    """第二區的整區結論。兩個軸交叉：這波誰撐的（漲幅拆解）× 現在還撐不撐得住（四題體檢）。
+
+    這是三個小節裡唯一一個跨小節的判斷。不跨的話，「過去靠本業、現在已經在縮」
+    會被那兩句各自的小結講成好消息 —— 兩句都沒說錯，但合起來的意思沒人講。
+    """
+    earned = split["earnings"] > split["multiple"]
+    # ok is False 才是紅燈。None 是「資料不足」或「沒動」，那不是壞消息，不准算進來
+    bad = sum(1 for r in quality if r["ok"] is False)
+    key = f"{'earned' if earned else 'mood'}_{'solid' if bad == 0 else 'slipping'}"
+    face, text = SUPPORT_CONCLUSIONS[key]
+    note = SUPPORT_PROPPED_NOTE if sliced and sliced["conclusion"] == "propped" else ""
+    return {"key": key, "face": face, "bad": bad, "by": "本業" if earned else "情緒",
+            "earnings": split["earnings"], "multiple": split["multiple"],
+            "text": text.format(bad=bad), "note": note}
 
 
 def _spark_point(s: dict) -> dict:
@@ -76,6 +161,19 @@ def _pe_trap(earnings: float, price: float, years: int) -> dict | None:
     return {"years": years, "earnings_x": round(grew, 1), "price_x": round(rose, 1)}
 
 
+def price_verdict(pct: int, years: int, trap: dict | None) -> dict:
+    """「現在貴不貴」的一句話結論。看的只有一個數字：本益比落在自己這幾年的第幾 %。
+
+    有盈餘暴衝陷阱時直接換一句 —— 那種情況百分位量到的是盈餘的成長速度，不是貴或便宜，
+    照著印「偏便宜」比不印還糟。
+    """
+    face, label, text = next((f, l, t) for lo, f, l, t in PRICE_VERDICT_BANDS if pct >= lo)
+    if trap:
+        face, label, text = PRICE_VERDICT_TRAP
+    return {"face": face, "label": label, "pct": pct, "years": years,
+            "text": text, "tail": PRICE_VERDICT_TAIL}
+
+
 def _ttm_yoy(known: list[tuple[str, float]], back: int) -> float | None:
     """滾動一年盈餘的年增率。back=0 是最新一季，back=1 是上一季。
 
@@ -83,13 +181,6 @@ def _ttm_yoy(known: list[tuple[str, float]], back: int) -> float | None:
     """
     i = len(known) - 1 - back
     return _pct(known[i][1], known[i - 4][1]) if i - 4 >= 0 else None
-
-
-def _margin_delta(margins: list[dict], key: str) -> float | None:
-    """最新財年跟前一個財年的差，單位是百分點。margins 是新的在前。"""
-    if len(margins) < 2 or margins[0][key] is None or margins[1][key] is None:
-        return None
-    return round(margins[0][key] - margins[1][key], 1)
 
 
 def _check(key: str, value: float | None, basis: str) -> dict:
@@ -129,9 +220,9 @@ def earnings_quality(known: list[tuple[str, float]], margins: list[dict]) -> lis
                f"{_quarter(known, 0)} 公布的近一年　vs　{_quarter(known, 4)} 公布的近一年"),
         _check("accel", None if now is None or prev is None else round(now - prev, 1),
                f"最新這季的年增率　vs　上一季（{_quarter(known, 1)} 公布）的年增率"),
-        _check("revenue", margins[0].get("revenue_growth") if margins else None,
+        _check("revenue", margins[0]["d"]["revenue"] if margins else None,
                f"{_fy(margins, 0)} 財年　vs　{_fy(margins, 1)} 財年"),
-        _check("margin", _margin_delta(margins, "net_margin"),
+        _check("margin", margins[0]["d"]["net_margin"] if margins else None,
                f"{_fy(margins, 0)} 財年　vs　{_fy(margins, 1)} 財年"),
     ]
 
@@ -175,21 +266,30 @@ def build_valuation(fin: dict, years: int) -> dict:
         "eps_to": round(b["eps"], 2),
     }
 
-    margins = _margins(fin["revenue"], fin["gross"], fin["net"])
+    margins = _margins(fin["revenue"], fin["gross"], fin["net"], fin.get("shares", {}))
+    pct = round((now - lo) / (hi - lo) * 100) if hi > lo else 50
+    trap = _pe_trap(split["earnings"], split["price"], years)
+    quality = earnings_quality(known, margins)
+    sliced = slice_eps(margins)
     return {
         "years": years,
         "from": a["date"],
         "to": b["date"],
-        "quality": earnings_quality(known, margins),
+        "quality": quality,
         "fair": _fair(pes, b["eps"], b["pe"] * b["eps"]),
         "pe": {"low": round(lo, 1), "high": round(hi, 1), "now": round(now, 1),
                "low_at": cold, "high_at": hot,
-               "pct": round((now - lo) / (hi - lo) * 100) if hi > lo else 50,
-               "trap": _pe_trap(split["earnings"], split["price"], years),
+               "pct": pct,
+               "trap": trap,
+               # 「所以現在到底貴不貴」的一句話。上面那堆數字都在講過程，這裡答結果
+               "verdict": price_verdict(pct, years, trap),
                # 每個點都帶日期、當天股價、當時的滾動盈餘，滑過去才答得出「當時為什麼是這個價」。
                # 本益比由四捨五入後的股價與盈餘算回來，畫面上那道除法才按得出同一個答案。
                "spark": [_spark_point(s) for s in downsample(window, VALUATION_SPARK_POINTS)]},
         "split": split,
         "margins": margins,
+        "slice": sliced,
+        # 第二區三個小節唯一跨小節的判斷：誰撐的 × 還撐不撐得住
+        "support": support_verdict(split, quality, sliced),
         "eps_points": len(known),
     }

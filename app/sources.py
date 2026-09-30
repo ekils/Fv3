@@ -15,7 +15,10 @@ from .config import (
     CHART_RANGES,
     DIVIDEND_SAMPLE,
     EARNINGS_DATES_LIMIT,
+    EPS_SURPRISE_QUARTERS,
     FRED_HISTORY_DAYS,
+    HTTP_RETRY_ATTEMPTS,
+    HTTP_RETRY_BACKOFF_SECONDS,
     HTTP_TIMEOUT_SECONDS,
     RISK_EXTRA_SYMBOLS,
     ROTATION_HISTORY_DAYS,
@@ -25,6 +28,20 @@ from .config import (
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 FRED_BASE = "https://api.stlouisfed.org/fred"
+
+
+async def _get(client: httpx.AsyncClient, url: str, params: dict) -> httpx.Response:
+    """GET，遇到 5xx 就再問一次。
+
+    上游回 502 代表「我這一秒接不到」，不代表資料有問題 —— 第一次就放棄的話，
+    整張卡會因為對方打了個嗝而變成一行錯誤訊息。4xx 不重試：那是我們問錯了。
+    """
+    for attempt in range(HTTP_RETRY_ATTEMPTS):
+        r = await client.get(url, params=params)
+        if r.status_code < 500 or attempt == HTTP_RETRY_ATTEMPTS - 1:
+            r.raise_for_status()
+            return r
+        await asyncio.sleep(HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
 
 
 def _finnhub_token() -> str:
@@ -46,12 +63,9 @@ async def fetch_fred(series_ids: tuple[str, ...]) -> dict[str, list[dict]]:
     start = (date.today() - timedelta(days=FRED_HISTORY_DAYS)).isoformat()
 
     async def one(client: httpx.AsyncClient, sid: str) -> list[dict]:
-        r = await client.get(
-            f"{FRED_BASE}/series/observations",
-            params={"series_id": sid, "api_key": _fred_token(), "file_type": "json",
-                    "observation_start": start},
-        )
-        r.raise_for_status()
+        r = await _get(client, f"{FRED_BASE}/series/observations",
+                       {"series_id": sid, "api_key": _fred_token(), "file_type": "json",
+                        "observation_start": start})
         return [{"date": o["date"], "value": float(o["value"])}
                 for o in r.json()["observations"] if o["value"] != "."]
 
@@ -60,22 +74,31 @@ async def fetch_fred(series_ids: tuple[str, ...]) -> dict[str, list[dict]]:
     return dict(zip(series_ids, series))
 
 
-async def fetch_news_counts(symbol: str) -> list[dict]:
-    """每天幾則新聞。一天一個請求 —— 見 config.ATTENTION_DAYS 的註解。"""
-    days = [date.today() - timedelta(days=i) for i in range(ATTENTION_DAYS - 1, -1, -1)]
+async def _finnhub_news_by_day(symbol: str, days: list[date]) -> list[list[dict]]:
+    """一天一個請求。
 
-    async def one(client: httpx.AsyncClient, d: date) -> int:
-        r = await client.get(
-            f"{FINNHUB_BASE}/company-news",
-            params={"symbol": symbol, "from": d.isoformat(), "to": d.isoformat(),
-                    "token": _finnhub_token()},
-        )
-        r.raise_for_status()
-        return len(r.json())
+    company-news 一次最多回大約 250 則，而且是從最新的那天往回填 —— 問一整個區間
+    的話，熱門股光最近兩三天就把額度吃光，區間前半段會靜默變成「那天沒新聞」。
+    """
+    async def one(client: httpx.AsyncClient, d: date) -> list[dict]:
+        r = await _get(client, f"{FINNHUB_BASE}/company-news",
+                       {"symbol": symbol, "from": d.isoformat(), "to": d.isoformat(),
+                        "token": _finnhub_token()})
+        return r.json()
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        counts = await asyncio.gather(*(one(client, d) for d in days))
-    return [{"date": d.isoformat(), "count": c} for d, c in zip(days, counts)]
+        return await asyncio.gather(*(one(client, d) for d in days))
+
+
+def _span(start: date, end: date) -> list[date]:
+    return [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
+
+async def fetch_news_counts(symbol: str) -> list[dict]:
+    """每天幾則新聞。"""
+    days = [date.today() - timedelta(days=i) for i in range(ATTENTION_DAYS - 1, -1, -1)]
+    per_day = await _finnhub_news_by_day(symbol, days)
+    return [{"date": d.isoformat(), "count": len(items)} for d, items in zip(days, per_day)]
 
 
 async def fetch_financials(symbol: str) -> dict:
@@ -124,6 +147,10 @@ def _yahoo_financials(symbol: str) -> dict:
         "revenue": row("Total Revenue"),
         "gross": row("Gross Profit"),
         "net": row("Net Income"),
+        # 每股盈餘的分母。跟上面三個是同一張損益表、同一次呼叫，不多打一次 API。
+        # 用稀釋後股數不用基本股數：員工手上還沒換成股票的選擇權遲早會變成股票，
+        # 那一份本來就該算進來 —— 用基本股數會把稀釋的效果藏到明年才看到。
+        "shares": row("Diluted Average Shares"),
         "closes": [{"date": i.date().isoformat(), "close": round(float(c), 4)}
                    for i, c in hist["Close"].items()],
     }
@@ -132,11 +159,8 @@ def _yahoo_financials(symbol: str) -> dict:
 async def fetch_eps_quarters(symbol: str) -> list[dict]:
     """每一季的每股盈餘，由舊到新。四季一加就是滾動一年的盈餘。"""
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        r = await client.get(
-            f"{FINNHUB_BASE}/stock/metric",
-            params={"symbol": symbol, "metric": "all", "token": _finnhub_token()},
-        )
-        r.raise_for_status()
+        r = await _get(client, f"{FINNHUB_BASE}/stock/metric",
+                       {"symbol": symbol, "metric": "all", "token": _finnhub_token()})
         rows = r.json().get("series", {}).get("quarterly", {}).get("eps", [])
     if not rows:
         raise RuntimeError(f"Finnhub 查無 {symbol} 的季度每股盈餘")
@@ -144,13 +168,29 @@ async def fetch_eps_quarters(symbol: str) -> list[dict]:
                   key=lambda x: x["period"])
 
 
+async def fetch_eps_surprises(symbol: str) -> list[dict]:
+    """最近幾季「實際每股盈餘 vs 分析師預估」，由新到舊。
+
+    法說會摘要要拿它當地基：模型上網搜到的數字可能是舊的、可能是別家寫錯的，
+    這一份是我們自己跟 Finnhub 要的，打架時以它為準。
+    """
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+        r = await _get(client, f"{FINNHUB_BASE}/stock/earnings",
+                       {"symbol": symbol, "limit": EPS_SURPRISE_QUARTERS,
+                        "token": _finnhub_token()})
+        rows = r.json()
+    if not rows:
+        raise RuntimeError(f"Finnhub 查無 {symbol} 的每股盈餘實際值")
+    return [{"period": x["period"], "year": x["year"], "quarter": x["quarter"],
+             "actual": x["actual"], "estimate": x["estimate"],
+             "surprise": x["surprise"], "surprise_pct": round(x["surprisePercent"], 2)}
+            for x in rows[:EPS_SURPRISE_QUARTERS] if x.get("actual") is not None]
+
+
 async def fetch_profile(symbol: str) -> dict:
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        r = await client.get(
-            f"{FINNHUB_BASE}/stock/profile2",
-            params={"symbol": symbol, "token": _finnhub_token()},
-        )
-        r.raise_for_status()
+        r = await _get(client, f"{FINNHUB_BASE}/stock/profile2",
+                       {"symbol": symbol, "token": _finnhub_token()})
         data = r.json()
     if not data:
         raise RuntimeError(f"Finnhub 查無此代號: {symbol}")
@@ -162,19 +202,9 @@ async def fetch_profile(symbol: str) -> dict:
 
 
 async def fetch_finnhub_news(symbol: str, start: date, end: date) -> list[dict]:
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        r = await client.get(
-            f"{FINNHUB_BASE}/company-news",
-            params={
-                "symbol": symbol,
-                "from": start.isoformat(),
-                "to": end.isoformat(),
-                "token": _finnhub_token(),
-            },
-        )
-        r.raise_for_status()
-        items = r.json()
-    return [_from_finnhub(i) for i in items if i.get("headline") and i.get("datetime")]
+    per_day = await _finnhub_news_by_day(symbol, _span(start, end))
+    return [_from_finnhub(i) for items in per_day for i in items
+            if i.get("headline") and i.get("datetime")]
 
 
 def _from_finnhub(item: dict) -> dict:
@@ -249,12 +279,9 @@ async def fetch_benchmarks(start: date, end: date) -> dict[str, dict[str, float]
 
 async def fetch_earnings(symbol: str, start: date, end: date) -> list[dict]:
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        r = await client.get(
-            f"{FINNHUB_BASE}/calendar/earnings",
-            params={"symbol": symbol, "from": start.isoformat(), "to": end.isoformat(),
-                    "token": _finnhub_token()},
-        )
-        r.raise_for_status()
+        r = await _get(client, f"{FINNHUB_BASE}/calendar/earnings",
+                       {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat(),
+                        "token": _finnhub_token()})
     return r.json().get("earningsCalendar", [])
 
 

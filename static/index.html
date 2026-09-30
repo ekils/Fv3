@@ -25,6 +25,9 @@
     --axis:           #c3c2b7;
     --border:         rgba(11,11,11,0.10);
     --series-1:       #2a78d6;
+    /* 彈窗標題列的底色。淺色主題用淡藍，深色主題用暗藍 —— 兩邊都要跟
+       後面的背景明顯不同色，這一條的全部意義就是「看得出邊界在哪」 */
+    --head:           rgba(223, 233, 250, 0.92);
     --good:           #0ca30c;
     --warning:        #fab219;
     --critical:       #d03b3b;
@@ -48,6 +51,7 @@
       --axis:           #383835;
       --border:         rgba(255,255,255,0.10);
       --series-1:       #3987e5;
+      --head:           rgba(26, 46, 84, 0.78);
     }
   }
   :root[data-theme="dark"] {
@@ -66,6 +70,7 @@
     --axis:           #383835;
     --border:         rgba(255,255,255,0.10);
     --series-1:       #3987e5;
+    --head:           rgba(26, 46, 84, 0.78);
   }
 
   * { box-sizing: border-box; }
@@ -103,12 +108,16 @@
   .quote { margin-bottom: 14px; }
   .idline { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
   .idline .co { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* 固定成同一個方框，圖片縮在裡面 —— 各家 logo 比例不同，不鎖死會一家一個高度 */
+  /* 固定成同一個方框，圖片縮在裡面 —— 各家 logo 比例不同，不鎖死會一家一個高度。
+     這個方框本身就是「問法說會」的按鈕：點公司的臉去問這家公司，不用再多一顆鈕。
+     沒有 logo（或圖載不進來）的公司，方框裡就放 🙋‍♂️ —— 按鈕永遠在，只是換張臉 */
   .idline .logobox {
     width: 40px; height: 40px; border-radius: 8px; background: #fff;
     flex-shrink: 0; display: flex; align-items: center; justify-content: center;
     padding: 4px; overflow: hidden;
+    border: 1px solid transparent; font-size: 22px; line-height: 1; cursor: pointer;
   }
+  .idline .logobox:hover { border-color: var(--warning); }
   .idline .logobox img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
   .hilo { margin-left: auto; display: flex; gap: 16px; flex: 0 0 auto; white-space: nowrap; }
   .rbar { flex: 0 0 132px; }
@@ -275,9 +284,6 @@
   .ico { font-size: 16px; width: 14px; text-align: center; }
   .ok { color: var(--good); } .warn { color: var(--warning); } .bad { color: var(--critical); }
 
-  .headline-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
-  .headline-row .big { font-size: 36px; font-weight: 750; letter-spacing: -0.02em; }
-  .headline-row .co { color: var(--text-secondary); font-size: 18px; }
   .meta { font-size: 16.5px; color: var(--text-muted); margin-bottom: 20px; }
 
   .evt { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid var(--grid); }
@@ -356,6 +362,7 @@
   }
   #tip .th { font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
   #tip .tr2 { color: var(--text-primary); }
+  #tip .tr2 small { font-size: 12px; margin-left: 6px; opacity: .85; }
   .scoreboard { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 18px; }
   .score {
     flex: 1 1 120px; background: var(--plane); border: 1px solid var(--border);
@@ -366,6 +373,8 @@
   .score.pos .sv { color: var(--good); }
   .score.neg .sv { color: var(--critical); }
   .score.mut .sv { color: var(--text-muted); }
+
+  .mood-say { font-size: 14px; line-height: 1.7; color: var(--text-muted); margin-top: 2px; }
 
   .calnav { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
   .calnav button { background: var(--plane); border: 1px solid var(--border); color: var(--text-primary);
@@ -412,22 +421,45 @@
   .facts span { background: var(--plane); border: 1px solid var(--border); border-radius: 999px;
     padding: 6px 12px; font-size: 15px; }
   .facts span b { font-weight: 650; color: var(--text-primary); }
-  .bbody h3 { font-size: 17px; margin: 16px 0 8px; }
+  /* 這張卡的三個小標一律黃色，卡內的「項目名稱」用暗一階的同色 —— 同一個色系分兩層，
+     掃過去就知道哪些是標題、哪些是資料，不用再多一種顏色 */
+  .bbody h3 { font-size: 17px; margin: 16px 0 8px; color: var(--neon-yellow); }
+  .bbody li { color: color-mix(in srgb, var(--neon-yellow) 62%, var(--text-muted)); }
   .bbody p { font-size: 16px; line-height: 1.75; color: var(--text-secondary); margin: 0; }
   .bbody ul { margin: 0; padding-left: 22px; }
   .bbody li { font-size: 16px; line-height: 1.8; color: var(--text-secondary); }
   /* 公司自述動輒上千字，不夾住的話整個兩欄區會被擠到螢幕外 */
-  .macro { display: flex; flex-direction: column; gap: 2px; }
-  .mrow { display: grid; grid-template-columns: 1fr auto auto 90px auto; align-items: center;
-    gap: 14px; padding: 8px 10px; border-radius: 8px; font-size: 15px; }
-  .mitem:nth-child(odd) { background: rgba(255,255,255,.03); border-radius: 8px; }
-  .mwhy { padding: 0 10px 8px 10px; font-size: 13px; line-height: 1.6; }
-  .mname { color: var(--text-secondary); }
-  .mval { font-weight: 700; font-variant-numeric: tabular-nums; }
-  .mchg { font-size: 13px; font-variant-numeric: tabular-nums; }
+  /* 總體經濟指標：一次一張卡，左右箭頭翻頁 */
+  .mdeck { display: flex; align-items: stretch; gap: 8px; }
+  .mview { flex: 1; min-width: 0; overflow: hidden; border-radius: 12px; }
+  /* 卡片全部排成一條橫的，換頁是整條平移 —— 投影片的滑動感就是這樣來的 */
+  .mtrack { display: flex; align-items: stretch; transition: transform .32s cubic-bezier(.4,0,.2,1); }
+  .mnav {
+    flex: 0 0 34px; background: var(--plane); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--series-1); font-size: 16px; font-family: inherit; cursor: pointer;
+  }
+  .mnav:hover { background: color-mix(in srgb, var(--series-1) 16%, var(--plane)); }
+  /* 翻到底就沒有箭頭。用 hidden 不用 display:none，卡片才不會左右跳寬度 */
+  .mnav.gone { visibility: hidden; }
+  .mcard {
+    flex: 0 0 100%; box-sizing: border-box;
+    background: var(--plane); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; min-height: 124px;
+  }
+  .mname { color: var(--text-primary); font-size: 16px; font-weight: 650; }
+  .mval { font-size: 30px; font-weight: 750; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; line-height: 1.25; }
+  .mtrend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .mchg { font-size: 13.5px; font-variant-numeric: tabular-nums; }
   .spark { width: 90px; height: 20px; }
   .mdate { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-  @media (max-width: 720px) { .mrow { grid-template-columns: 1fr auto; } .spark, .mdate { display: none; } }
+  .mwhy { margin-top: 8px; font-size: 13.5px; line-height: 1.6; }
+  .mdots { display: flex; justify-content: center; gap: 7px; margin-top: 9px; }
+  .mdot {
+    width: 8px; height: 8px; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 0; background: var(--border);
+  }
+  .mdot.on { background: var(--series-1); }
   .bbody p.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .bbody .more { margin-top: 8px; background: none; border: 0; padding: 0; cursor: pointer;
     color: var(--series-1); font-size: 15px; font-family: inherit; }
@@ -443,6 +475,34 @@
     border-radius: 5px; color: var(--text-primary);
   }
   .explainbody .warn-line { color: var(--warning); }
+
+  /* 翻轉圖卡：正面是數字，背面是「這個數字哪來的、怎麼算的」。
+     背面用絕對定位疊在正面上，高度自然跟正面一樣 —— 不用寫死高度 */
+  .flipc { position: relative; perspective: 1400px; }
+  .flipb {
+    position: absolute; top: 2px; right: 0; z-index: 4;
+    width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--border); background: var(--plane);
+    color: var(--series-1); font-size: 14px; font-family: inherit; line-height: 1;
+  }
+  .flipb:hover { border-color: var(--series-1); }
+  .flipf, .flipk { transition: transform .45s ease, opacity .25s ease; backface-visibility: hidden; }
+  .flipk {
+    position: absolute; inset: 0; z-index: 3; overflow: auto;
+    padding: 14px 44px 14px 16px; border-radius: 12px;
+    background: var(--plane); border: 1px solid var(--border);
+    transform: rotateY(180deg); opacity: 0; pointer-events: none;
+  }
+  .flipc.on .flipf { transform: rotateY(-180deg); opacity: 0; pointer-events: none; }
+  .flipc.on .flipk { transform: rotateY(0); opacity: 1; pointer-events: auto; }
+  .flipk h4 { margin: 0 0 8px; font-size: 16px; color: var(--text-primary); }
+  .flipk dl { margin: 0; font-size: 14.5px; line-height: 1.7; color: var(--text-secondary); }
+  .flipk dt { font-weight: 600; color: var(--text-primary); margin-top: 9px; }
+  .flipk dd { margin: 0; }
+  .flipk code {
+    font-size: 13.5px; background: var(--bg); padding: 1px 5px;
+    border-radius: 4px; color: var(--text-primary);
+  }
 
   /* 左側工具列：預設展開。寬度只有這一個來源，.wrap 的左邊界也吃它 */
   body { --rail-w: 72px; }
@@ -490,7 +550,12 @@
     width: min(1500px, 100%); height: min(880px, 100%); display: flex; flex-direction: column;
     overflow: hidden;
   }
-  .modal-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  /* 標題列要跟內容分得開。原本是透明的，深色主題下它跟後面的背景同一個黑，
+     縮成小橫幅的時候整塊融進畫面裡，看不出邊界在哪 —— 所以給它自己的藍。
+     帶一點透明＋模糊，是為了讓人看得出「這塊浮在東西上面」，不是畫死在背景裡 */
+  .modal-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--head); backdrop-filter: blur(10px); }
   .modal-head h2 { margin: 0; font-size: 19px; font-weight: 650; }
   .modal-sub { font-size: 14px; color: var(--text-muted); }
   .modal-x {
@@ -502,6 +567,100 @@
   /* 撐滿整個彈窗只有 TradingView widget 需要，別的內容套上去會被壓扁 */
   #heatBody > div, #heatBody iframe { width: 100% !important; height: 100% !important; }
   #calBody { padding: 4px 2px; }
+
+  /* ── 問法說會 ────────────────────────────────────────────── */
+  /* 按鈕就是公司 logo 本身（樣式在上面 .idline .logobox）。
+     放到工具列去的話，「問這一家」的對象就不明顯了 */
+  #askBody { padding: 18px 22px; }
+  .ask-form { display: flex; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); }
+  .ask-form input { flex: 1 1 auto; min-width: 0; background: var(--plane);
+    border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary);
+    font: inherit; font-size: 15px; padding: 10px 14px; }
+  .ask-form button { flex: 0 0 auto; background: var(--plane); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text-primary); font: inherit; font-size: 15px;
+    padding: 10px 22px; cursor: pointer; }
+  .ask-form button:hover:not(:disabled) { border-color: currentColor; }
+  .ask-form input:disabled, .ask-form button:disabled { opacity: .45; cursor: default; }
+  /* 問句靠右、答案靠左 —— 這是唯一不用讀字就知道誰在說話的辦法 */
+  .ask-turn { margin: 0 0 16px; }
+  .ask-turn.me { display: flex; justify-content: flex-end; }
+  .ask-turn.me span { background: var(--plane); border: 1px solid var(--border);
+    border-radius: 12px 12px 2px 12px; padding: 9px 14px; font-size: 15px; max-width: 70%; }
+  .ask-say { font-size: 15.5px; line-height: 1.75; }
+  .ask-say h4 { margin: 18px 0 6px; font-size: 16px; color: var(--warning); }
+  .ask-say h4:first-child { margin-top: 0; }
+  .ask-say p { margin: 0 0 8px; }
+  .ask-say a { color: var(--series-1); }
+  .ask-src { margin-top: 10px; font-size: 13px; color: var(--text-muted);
+    border-top: 1px dashed var(--border); padding-top: 8px; }
+  .ask-src a { color: var(--text-muted); }
+  /* 沒查網路就是憑記憶答的。這件事不能藏起來 —— 使用者有權知道這句話有沒有出處 */
+  .ask-src.memory { color: var(--critical); }
+  /* 上色的關鍵字。用色塊不用純色字 —— 一段話裡有三四個純紅字會整段變成聖誕樹，
+     反而讀不到重點。顏色＝這個詞對股價的方向，綠好、紅壞、黃＝要自己讀。
+     哪個詞算哪一色是後端 config 決定的，這裡只有三個色票 */
+  .ask-key { font-weight: 700; border-radius: 4px; padding: 0 3px; margin: 0 1px; }
+  .ask-key.good  { color: var(--good);     background: color-mix(in srgb, var(--good) 16%, transparent); }
+  .ask-key.bad   { color: var(--critical); background: color-mix(in srgb, var(--critical) 16%, transparent); }
+  .ask-key.watch { color: var(--warning);  background: color-mix(in srgb, var(--warning) 16%, transparent); }
+
+  /* ── 等待動畫 ─────────────────────────────────────────── */
+  .ask-wait { color: var(--text-muted); font-size: 15px; }
+  .ask-run { display: flex; align-items: center; gap: 10px; }
+  .ask-sec { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  .ask-spin { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--warning);
+    animation: ask-turn .8s linear infinite; }
+  @keyframes ask-turn { to { transform: rotate(360deg); } }
+  /* 三顆點輪流亮。純文字的「…」是靜止的，看起來跟當掉一樣 */
+  .ask-dots i { font-style: normal; animation: ask-blink 1.2s infinite; }
+  .ask-dots i:nth-child(2) { animation-delay: .2s; }
+  .ask-dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes ask-blink { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+  .ask-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0 26px; }
+  .ask-step { font-size: 13px; padding: 3px 10px; border-radius: 99px;
+    border: 1px solid var(--border); opacity: .45; }
+  .ask-step.on { opacity: 1; color: var(--warning); border-color: currentColor; }
+  /* 會暈車的人把動畫關掉了。內容還是要看得到，只是不再轉 */
+  @media (prefers-reduced-motion: reduce) {
+    .ask-spin, .ask-dots i { animation: none; }
+    .ask-spin { border-top-color: var(--warning); }
+  }
+  .ask-left { font-size: 13px; color: var(--text-muted); text-align: right; padding: 0 22px 10px; }
+
+  /* ── 縮到右下角 ───────────────────────────────────────────
+     只加一個 class，不搬 DOM。搬 DOM 的話捲動位置、輸入框裡打到一半的字、
+     還在跑的等待動畫全部會被重建 —— 那就不叫最小化，叫關掉再開一個。
+
+     遮罩要讓點擊穿過去，不然縮起來了還是擋著後面的 sidebar 跟估值鈕，
+     等於沒縮。只有那顆小方塊自己收點擊。
+
+     每個彈窗都吃這一套，不是只有問問 —— 縮起來的行為本來就跟裡面裝什麼無關。
+     多個一起縮的時候靠 --dock 往上疊，值由 dockLayout() 每次重算，
+     不是縮的時候記一個位置：中間有人被放大或關掉，記住的位置就是錯的。 */
+  .modal.min { background: none; pointer-events: none;
+    align-items: flex-end; justify-content: flex-end;
+    padding: 16px; padding-bottom: calc(16px + var(--dock, 0px)); }
+  /* 縮起來只剩標題列，所以邊界全靠這圈藍框跟陰影撐 —— 沒有它，深色主題下
+     這塊會整個融進背景，你根本看不出那裡有東西 */
+  .modal.min .modal-box { pointer-events: auto; width: auto; height: auto;
+    border-color: var(--series-1); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .modal.min .modal-head { border-bottom: 0; padding: 10px 14px; cursor: pointer; }
+  .modal.min .modal-head h2 { font-size: 15px; }
+  .modal.min .modal-sub { max-width: 220px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .modal.min .modal-body, .modal.min .ask-left, .modal.min .ask-form { display: none; }
+  /* .modal-x 自己帶 margin-left:auto（把鈕推到最右）。兩顆鈕就會各分到一份剩餘空間，
+     中間被撐開一大段 —— 所以第一顆之後的一律改成貼著前一顆。用 ~ 不寫死是哪一顆，
+     以後標題列再多一顆鈕也不用再改一次 */
+  .modal-head .modal-x ~ .modal-x { margin-left: 4px; }
+  /* 縮放動畫期間：原點必須是左上角，FLIP 那組位移／縮放的算式才對得上中心點
+     預設的 center 會讓方塊一邊縮一邊自己往回飄。順便關掉捲軸免得閃一下 */
+  .modal.zoom .modal-box { transform-origin: 0 0; overflow: hidden; }
+  /* 縮起來的時候還在等答案 —— 這顆點在跳，代表它沒有因為你縮起來就停工 */
+  .ask-busy { display: none; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--warning); animation: ask-blink 1.2s infinite; }
+  #askModal.min .ask-busy.on { display: block; }
 
   .cmp-head { display: flex; align-items: center; justify-content: space-between;
     gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -538,12 +697,25 @@
     font-size: 15px; font-variant-numeric: tabular-nums; }
   .bb-yield b { font-size: 19px; color: var(--neon-yellow); }
   .bb-ends { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+  /* 這段是整張卡最容易被誤讀的地方，弱化成一個灰框等於沒寫。
+     左邊粗槓 + 整塊染色 + 外圈光暈，讓它明確地不像「附註」 */
   .pe-trap {
-    margin: 10px 0 4px; padding: 12px 14px; border-radius: 10px;
-    border-left: 3px solid var(--warning); background: var(--plane);
-    font-size: 15px; line-height: 1.75; color: var(--text-secondary);
+    position: relative; margin: 14px 0 4px; padding: 15px 18px 15px 20px; border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+    border-left: 6px solid var(--warning);
+    background: linear-gradient(100deg,
+      color-mix(in srgb, var(--warning) 15%, var(--surface-1)), var(--plane) 62%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 18%, transparent),
+                0 6px 22px -8px color-mix(in srgb, var(--warning) 60%, transparent);
+    font-size: 15.5px; line-height: 1.8; color: var(--text-primary);
   }
   .pe-trap strong { color: var(--warning); }
+  /* 拉桿跟上面的警告框要分得開 —— 間距現在由 .lift 統一給，這裡不再各寫一套 */
+  /* 本益比那個大數字自己就是冷熱溫度計，漸層由 peHeat() 依百分位算出來 */
+  .valu-now > b.pe-big {
+    background-clip: text; -webkit-background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 14px rgba(255,180,60,.28));
+  }
   .valu-years { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
   .valu-years > label { font-size: 14px; color: var(--text-muted); }
   .valu-years .ranges span { padding: 7px 13px; font-size: 15.5px; }
@@ -609,11 +781,98 @@
   .fair-cell .fs { font-size: 12.5px; font-variant-numeric: tabular-nums; }
   /* 這兩個數字是整段的前提，其他全部從它們算出來 —— 要一眼找得到 */
   .caveat b.hot { color: var(--neon-yellow); font-size: 1.12em; font-weight: 750; }
-  .valu-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
-  .valu-cell { background: var(--plane); border-radius: 10px; padding: 11px 12px; }
-  .valu-cell .vy { font-size: 13px; color: var(--text-muted); }
-  .valu-cell .vv { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .valu-cell .vs { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  /* ── 財年表格：一列一個指標，一欄一個財年 ──────────────────
+     為什麼是這個方向，不是一年一張卡：這一區要看的是「軌跡」。
+     同一個指標排在同一條水平線上，眼睛才掃得過去 ——
+     淨利率 15.4 → 15.5 → 7.3 → 4.0 一路往下，一眼就看得出來；
+     散在四張卡的第四行，你得開四次眼睛自己對齊。
+     窄畫面裝不下五欄，所以整張表可以左右滑，指標名稱那一欄釘住不動 ——
+     滑到 2022 年卻看不到那一列在講什麼，等於沒東西可看。 */
+  .fy-wrap { overflow-x: auto; max-width: 100%; }
+  .fy { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums;
+    min-width: 100%; }
+  .fy th, .fy td { padding: 7px 14px; text-align: right; white-space: nowrap;
+    border-bottom: 1px solid var(--grid); }
+  .fy thead th { font-size: 13px; color: var(--text-muted); font-weight: 600;
+    border-bottom: 1px solid var(--border); }
+  /* 釘住的那一欄要有自己的底色，不然滑動時右邊的數字會從它背後透出來 */
+  .fy .fy-k { position: sticky; left: 0; z-index: 1; text-align: left; font-weight: 600;
+    background: var(--plane); color: var(--text-primary); }
+  .fy thead .fy-k { background: var(--plane); }
+  .fy tbody tr:hover td { background: color-mix(in srgb, var(--series-1) 9%, transparent); }
+  .fy .fy-v { font-size: 15.5px; font-weight: 650; line-height: 1.25; }
+  /* 變化擠在同一格的第二行，不另開一列 —— 開了列數就從 6 變 12，表格高一倍 */
+  .fy .fy-d { font-size: 12px; font-weight: 600; line-height: 1.25; }
+  .fy .fy-none { color: var(--text-muted); font-weight: 400; }
+
+  /* ── 切蛋糕：每股盈餘 = 公司賺的錢 ÷ 股數 ────────────────── */
+  .slice { background: var(--plane); border-radius: 10px; padding: 14px 16px;
+    max-width: 620px; margin-top: 12px; border-left: 4px solid var(--series-1); }
+  .slice-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+    align-items: baseline; padding: 5px 0; font-variant-numeric: tabular-nums; }
+  .slice-row .sk { font-size: 14px; }
+  .slice-row .sv { font-size: 13px; color: var(--text-secondary); }
+  .slice-row .sp { font-size: 15px; font-weight: 700; min-width: 72px; text-align: right; }
+  .slice-row.tot { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 9px; }
+  .slice-row.tot .sk, .slice-row.tot .sp { font-weight: 750; }
+  /* 結論站在框子旁邊，不在框子裡 —— 框裡三行是算式，這句是算完的答案。
+     窄畫面裝不下兩欄就自己掉到下面，箭頭照樣指得通 */
+  .slice-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .slice-wrap > .slice { margin-top: 12px; }
+  .slice-end { display: flex; align-items: baseline; gap: 8px; max-width: 420px;
+    font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+  .slice-end .se-arrow { color: var(--neon-yellow); font-size: 20px; }
+  .slice-end b { font-size: 17px; }
+
+  /* 一整個大區塊的結論。跟 .slice-end 不同：那個收在切蛋糕框裡，這個是整區的收尾。
+     長相全部來自 .lift，這裡只管字 —— 兩個地方各寫一套背景，改一邊就會對不起來 */
+  .part-end { margin: 16px 0 4px; max-width: 760px;
+    font-size: 14.5px; color: var(--text-secondary); line-height: 1.6; }
+  .part-end > b { font-size: 16px; margin-right: 6px; }
+  .part-end-tail { margin-top: 6px; font-size: 13px; color: var(--text-muted); }
+
+  /* ── 浮起來 ────────────────────────────────────────────────
+     底部一道螢光黃，加一團往下散開的光暈 —— 看起來就像這塊從頁面上被撐起來一點。
+     只有「一張圖」和「一個結論」配得到，到處撒的話等於沒有主視覺。
+     光暈用 color-mix 混 --neon-yellow，深淺主題各自會拿到自己的那個黃。
+     寫在所有被套用的 class 後面：同樣權重比後來居上，padding／背景以這裡為準 */
+  /* 上下都要留白：光暈是往外散的，貼著上一行字就會糊在字上面 */
+  .lift { border-radius: 12px; padding: 16px 18px; margin: 20px 0 26px;
+    background: var(--surface-1);
+    border: 1px solid color-mix(in srgb, var(--neon-yellow) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-yellow) 20%, transparent),
+                0 0 22px -4px color-mix(in srgb, var(--neon-yellow) 45%, transparent);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  /* 滑過去整塊往上抬一點、光暈同時變亮 —— 手感上就是「這塊是可以看的東西」。
+     只動 transform 不動 margin：動 margin 會重排版面，下面整段字會跟著抖 */
+  .lift:hover { transform: translateY(-3px);
+    border-color: var(--neon-yellow);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-yellow) 34%, transparent),
+                0 10px 34px -6px color-mix(in srgb, var(--neon-yellow) 62%, transparent); }
+  /* 會暈車的人只留亮度變化，框不再跳動 */
+  @media (prefers-reduced-motion: reduce) {
+    .lift { transition: box-shadow .18s ease, border-color .18s ease; }
+    .lift:hover { transform: none; }
+  }
+  /* 整區結論要比圖再重一級：框實一點、光暈散得更開 */
+  .part-end.lift { border-color: var(--neon-yellow);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-yellow) 32%, transparent),
+                0 0 30px -3px color-mix(in srgb, var(--neon-yellow) 62%, transparent); }
+  /* 這條要寫在 .part-end.lift 後面，不然結論框的底色規則會把上面那個 hover 蓋掉 */
+  .part-end.lift:hover {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-yellow) 45%, transparent),
+                0 12px 40px -6px color-mix(in srgb, var(--neon-yellow) 80%, transparent); }
+
+  /* ── 估值卡的三個大區塊 ────────────────────────────────────
+     原本六個 h3 權重一模一樣，等於沒有主從，眼睛不知道從哪看起。
+     大標有底色橫幅，小標退成灰字，一眼就分得出「這是一區」跟「這是一區裡的一段」
+     顏色用 --neon-yellow：它本來就分深淺主題（深色 #ffd400、淺色 #9a6b00），
+     這裡寫死一個黃色的話，淺色主題會變成白底上的亮黃，等於沒有底色 */
+  .valu-part { font-size: 21px; font-weight: 750; margin: 30px 0 14px;
+    padding: 9px 14px; border-radius: 8px; border-left: 4px solid var(--neon-yellow);
+    background: linear-gradient(100deg,
+      color-mix(in srgb, var(--neon-yellow) 26%, transparent), var(--plane) 78%); }
+  .valu-part:first-of-type { margin-top: 16px; }
 
   /* ── 大盤／板塊對照表、回購年度表、資金流向 ──────────────── */
   .cmp-row, .grid4, .rot-row { display: grid; align-items: baseline; gap: 12px;
@@ -650,13 +909,84 @@
 
   .rot-risk { margin: 6px 0; padding: 9px 12px; border-radius: 9px; background: var(--plane); }
   .rot-risk b { font-size: 15px; }
+  /* 數字在左、走勢線在右。線要明寫 flex-basis，只給寬度的話它會回頭問 SVG 要多寬，
+     SVG 又回頭問父層，互相等對方就縮成一條 */
+  .rot-risk-body { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+  .rot-risk-body > div { flex: 1 1 auto; min-width: 0; }
+  .rot-ratio { flex: 0 0 260px; width: 260px; height: 44px; display: block; }
+  @media (max-width: 720px) { .rot-risk-body { flex-direction: column; align-items: stretch; }
+    .rot-ratio { flex: none; width: 100%; } }
   .rot-verdict { margin: 14px 0 6px; font-size: 17px; font-weight: 600; line-height: 1.6; }
   .rot-head { display: flex; align-items: center; justify-content: space-between;
     gap: 16px; flex-wrap: wrap; margin-bottom: 2px; }
   .rot-head h3, .rot-h { margin: 0; color: var(--neon-yellow); font-size: 19px; }
   .rot-h { margin-top: 24px; }
-  #rotRanges span { padding: 6px 11px; font-size: 14.5px; }
-  #rotRanges input:checked + span { color: var(--neon-yellow); }
+  /* 區間拉桿：27 格從 1 天到半年。拖動時純前端重畫，不打 API */
+  .rot-slider { display: flex; align-items: center; gap: 10px; min-width: 300px; flex: 1 1 320px; }
+  .rot-slider .rs-end { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+  .rot-slider input[type="range"] {
+    flex: 1; appearance: none; -webkit-appearance: none; height: 6px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--series-1), var(--neon-yellow), var(--neon-orange));
+    outline-offset: 4px; cursor: grab;
+  }
+  .rot-slider input[type="range"]:active { cursor: grabbing; }
+  .rot-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--neon-yellow); border: 2px solid var(--surface-1);
+    box-shadow: 0 0 0 1px var(--neon-yellow), 0 0 10px 2px var(--neon-glow);
+  }
+  .rot-slider input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface-1);
+    background: var(--neon-yellow); box-shadow: 0 0 0 1px var(--neon-yellow);
+  }
+  .rot-span { color: var(--neon-yellow); font-size: 1.15em; font-weight: 750; }
+
+  /* ── RRG：十一個板塊 = 同一張二維圖上的十一個點 ───────── */
+  /* 滑鼠提示要貼著游標，所以外框必須是定位原點 */
+  /* 上限必須等於 viewBox 的原生寬度。放給它無上限拉滿的話 1 個 SVG 單位會變成 2.3px，
+     字級跟著放大成一坨，十一個板塊名整片疊在一起 —— 螢幕越大反而越看不懂。
+     所以要變寬是把 viewBox 一起改大（rrgHTML 裡的 W/H），不是只放寬這裡。 */
+  /* flex 項目要明寫 flex-basis。只給 max-width 的話，寬度回頭問 width:100% 的 SVG，
+     SVG 又回頭問父層 —— 互相等對方，結果整張圖縮成一小塊 */
+  .rrg-wrap { position: relative; margin: 10px 0 4px; flex: 1 1 100%; min-width: 0;
+    max-width: 1180px; }
+  .rrg-wrap svg { width: 100%; height: auto; display: block; touch-action: none; }
+  /* 播放時尾巴上那排靜態珠子要收起來，不然「還沒走到的路」已經先畫在那了 */
+  .rrg-wrap.playing .rrg-bead { opacity: 0; }
+  /* 左邊一排分類名稱，點下去那一條軌跡就走一次。十一條尾巴疊在一起，
+     用滑鼠在圖上找某個板塊是大海撈針 —— 用名字點才找得到 */
+  .rrg-deck { display: flex; gap: 14px; align-items: flex-start; max-width: 1340px; margin: 0 auto; }
+  .rrg-list { flex: 0 0 132px; display: flex; flex-direction: column; gap: 4px; }
+  .rrg-pick { display: flex; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 8px;
+    border: 1px solid transparent; background: var(--plane); color: var(--text-primary);
+    font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+  .rrg-pick:hover { border-color: currentColor; }
+  .rrg-pick.on { border-color: currentColor;
+    background: color-mix(in srgb, currentColor 16%, transparent); }
+  .rrg-pick i { flex: 0 0 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .rrg-pick span { color: var(--text-primary); }
+  .rrg-pick.on span { color: currentColor; font-weight: 700; }
+  @media (max-width: 900px) { .rrg-deck { flex-direction: column; }
+    .rrg-list { flex: none; flex-direction: row; flex-wrap: wrap; } }
+  .rrg-dot { cursor: pointer; }
+  .rrg-dot .rrg-now { transition: r .12s ease; }
+  .rrg-dot:hover .rrg-now, .rrg-dot.on .rrg-now { r: 10; }
+  /* 游標下那一顆以外全部退到背景 —— 十一條尾巴疊在一起，不退就看不出在看哪一條 */
+  .rrg-wrap.picking .rrg-dot { opacity: .18; }
+  .rrg-wrap.picking .rrg-dot.on { opacity: 1; }
+  .rrg-tip { position: absolute; pointer-events: none; z-index: 5; transform: translate(-50%, -100%);
+    padding: 7px 11px; border-radius: 9px; background: var(--surface-1); border: 1px solid;
+    white-space: nowrap; font-size: 13.5px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+  .rrg-tip b { display: block; font-size: 15px; }
+  /* 座標數字本身就上色：顏色 = 強度，數字和顏色講的是同一件事 */
+  .rrg-tip .rrg-xy { font-variant-numeric: tabular-nums; font-weight: 750; font-size: 16px; }
+  .rrg-tip .rrg-say { color: var(--text-muted); }
+  .rrg-group { margin: 7px 0; padding: 8px 12px; border-radius: 9px; background: var(--plane);
+    border-left: 3px solid; }
+  .rrg-group b { font-size: 15.5px; }
+  .rrg-group .rrg-names { color: var(--text-primary); font-size: 15px; }
+  .rrg-group .rrg-say { color: var(--text-muted); font-size: 13.5px; }
+  @media (max-width: 720px) { .rrg-tip { font-size: 12.5px; } }
 
   /* ── 注意力溫度計 ────────────────────────────────────── */
   /* ── 恐慌指數彈窗 ───────────────────────────────────── */
@@ -679,6 +1009,7 @@
     border-top: 1px solid var(--warning); }
   .vix-verdict { margin: 16px 0 12px; font-size: 16px; line-height: 1.7;
     background: var(--plane); border-radius: 11px; padding: 13px 16px; }
+  .corr { color: var(--neon-yellow); font-weight: 700; font-variant-numeric: tabular-nums; }
 
   .att-plot { display: flex; gap: 8px; margin-top: 12px; }
   .att-yaxis {
@@ -687,12 +1018,32 @@
   }
   .att-yaxis span { position: absolute; right: 0; transform: translateY(50%); }
   .att-bars {
-    position: relative; flex: 1; display: flex; align-items: flex-end; gap: 3px; height: 108px;
+    position: relative; flex: 1; display: flex; align-items: flex-end; gap: 3px;
+    height: 108px; margin-top: 16px;   /* 留給柱子頭上的數字 */
   }
-  .att-bars i { flex: 1; border-radius: 3px 3px 0 0; min-height: 2px; display: block; }
+  .att-bars i {
+    flex: 1; border-radius: 3px 3px 0 0; min-height: 2px; display: block; position: relative;
+    background: var(--series-1);
+  }
+  /* 數字寫在柱子頭上，就不必靠顏色去比高矮 */
+  .att-bars i::after {
+    content: attr(data-n); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    font-size: 10.5px; line-height: 1.3; color: var(--text-muted);
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  .att-bars .att-spike { background: var(--warning); }
+  .att-bars .att-spike::after { color: var(--warning); font-weight: 700; }
   .att-bars .att-grid {
     position: absolute; left: 0; right: 0; height: 0; min-height: 0; flex: none;
     border-top: 1px dashed var(--grid);
+  }
+  .att-bars .att-line {
+    position: absolute; left: 0; right: 0; height: 0; min-height: 0; flex: none; background: none;
+    border-top: 1px dashed color-mix(in srgb, var(--neon-yellow) 70%, transparent);
+  }
+  .att-bars .att-line::after {
+    content: attr(data-lbl); left: auto; right: 0; transform: translateY(-100%);
+    color: var(--neon-yellow); font-size: 10.5px;
   }
   .att-axis { display: flex; gap: 3px; margin: 4px 0 0 38px; font-size: 10.5px; color: var(--text-muted); }
   .att-axis span { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
@@ -721,16 +1072,37 @@
     </button>
     <button type="button" class="railbtn" id="btnRot">
       <span class="ricon" aria-hidden="true">🔀</span>
-      <span class="rlabel">資金流向</span>
+      <span class="rlabel">RRG 輪動圖</span>
     </button>
   </div>
 </nav>
+
+<div class="modal hidden" id="askModal" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="askTitle">🙋‍♂️問問</h2>
+      <span class="ask-busy" id="askBusy" aria-hidden="true"></span>
+      <span class="modal-sub" id="askSub"></span>
+      <button type="button" class="modal-x mini"
+        aria-label="縮到右下角" aria-expanded="true">－</button>
+      <button type="button" class="modal-x" id="askClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="askBody"></div>
+    <div class="ask-left" id="askLeft"></div>
+    <form class="ask-form" id="askForm">
+      <input type="text" id="askInput" autocomplete="off"
+        placeholder="再問一句：只回答這家公司、它的產業、還有大盤">
+      <button type="submit" id="askSend">問</button>
+    </form>
+  </div>
+</div>
 
 <div class="modal hidden" id="heatModal" role="dialog" aria-modal="true" aria-labelledby="heatTitle">
   <div class="modal-box">
     <div class="modal-head">
       <h2 id="heatTitle">美股 Heatmap</h2>
       <span class="modal-sub">方塊大小＝市值，顏色＝當日漲跌，依產業分組</span>
+      <button type="button" class="modal-x mini" aria-label="縮到右下角" aria-expanded="true">－</button>
       <button type="button" class="modal-x" id="heatClose" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body" id="heatBody"></div>
@@ -742,6 +1114,7 @@
     <div class="modal-head">
       <h2 id="calTitle">要注意的日子</h2>
       <span class="modal-sub">🔴 跟你查的股票直接相關　🟡 全市場都受影響　⚪ 關聯低</span>
+      <button type="button" class="modal-x mini" aria-label="縮到右下角" aria-expanded="true">－</button>
       <button type="button" class="modal-x" id="calClose" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body" id="calBody"></div>
@@ -753,6 +1126,7 @@
     <div class="modal-head">
       <h2 id="valuTitle">估值</h2>
       <span class="modal-sub">現在的價格，跟這家公司自己的過去比</span>
+      <button type="button" class="modal-x mini" aria-label="縮到右下角" aria-expanded="true">－</button>
       <button type="button" class="modal-x" id="valuClose" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body" id="valuBody"></div>
@@ -762,8 +1136,9 @@
 <div class="modal hidden" id="rotModal" role="dialog" aria-modal="true" aria-labelledby="rotTitle">
   <div class="modal-box">
     <div class="modal-head">
-      <h2 id="rotTitle">資金流向</h2>
-      <span class="modal-sub">市場的錢是一袋。這裡看它正在從哪一格搬到哪一格</span>
+      <h2 id="rotTitle">RRG 相對輪動圖</h2>
+      <span class="modal-sub">Relative Rotation Graph：每個板塊「比大盤強多少」和「這個強度正在變強還變弱」</span>
+      <button type="button" class="modal-x mini" aria-label="縮到右下角" aria-expanded="true">－</button>
       <button type="button" class="modal-x" id="rotClose" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body" id="rotBody"></div>
@@ -777,6 +1152,7 @@
     <div class="modal-head">
       <h2 id="vixTitle">恐慌指數 vs 股價</h2>
       <span class="modal-sub">VIX 高＝市場在花錢買保險</span>
+      <button type="button" class="modal-x mini" aria-label="縮到右下角" aria-expanded="true">－</button>
       <button type="button" class="modal-x" id="vixClose" aria-label="關閉">✕</button>
     </div>
     <div class="modal-body" id="vixBody"></div>
@@ -835,6 +1211,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const NS = "http://www.w3.org/2000/svg";
 const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
@@ -865,7 +1242,9 @@ function clearPending() {
   state.pending = [];
 }
 const STATE_ICON = { pending: "·", running: "◐", done: "✓", fail: "✕" };
-const NODE_W = 190, NODE_GAP = 12, NODE_H = 98;
+// 框要比最長的標籤再寬一截。文字是置中在 cx+14（讓開左邊的狀態圖示），
+// 所以右邊真正能用的只有半格減 14 —— 190 的時候「Finnhub 公司」已經頂到邊了
+const NODE_W = 232, NODE_GAP = 14, NODE_H = 108;
 // 三排節點在畫布高度上的位置比例。畫布高度是算出來的，不是寫死的 —— 見 flowHeight()
 const ROW_AT = [0.12, 0.45, 0.78];
 
@@ -1098,8 +1477,7 @@ function basicsHTML(r) {
       <div class="facts">${facts.map(f => `<span>${f}</span>`).join("")}</div>
       ${b.summary ? `<h3>靠什麼賺錢</h3><p class="clamp">${esc(b.summary)}</p>
         <button type="button" class="more" onclick="this.previousElementSibling.classList.toggle('clamp');
-          this.textContent = this.previousElementSibling.classList.contains('clamp') ? '看完整描述 ▾' : '收合 ▴'">看完整描述 ▾</button>
-        <div class="caveat">這段是 Yahoo Finance 提供的公司自述原文（英文），沒有翻譯，也沒有經過任何加工。</div>` : ""}
+          this.textContent = this.previousElementSibling.classList.contains('clamp') ? '看完整描述 ▾' : '收合 ▴'">看完整描述 ▾</button>` : ""}
       ${b.drivers.length ? `<h3>股價通常被這些大環境因素推著走</h3>
         <ul>${b.drivers.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
       <div id="macro"></div>
@@ -1118,50 +1496,142 @@ function sparkSVG(vals, risingIsGood = true) {
   </svg>`;
 }
 
-function macroHTML(d) {
-  if (!d.rows.length) return "";
-  const row = m => {
-    const c = m.change, arrow = c === null ? "→" : c > 0 ? "▲" : c < 0 ? "▼" : "→";
-    // 顏色跟著「對這個產業是好是壞」走，不是跟著數字大小走 —— 失業率往上不該是綠的
-    const color = c ? (m.effect.good ? "var(--good)" : "var(--critical)") : "var(--text-muted)";
-    const e = m.effect;
-    const why = e
-      ? `<div class="mwhy" style="color:${e.good ? "var(--good)" : "var(--critical)"}">
-           ${e.good ? "✅ 對這家公司偏正向" : "❌ 對這家公司偏負面"}：${esc(e.text)}</div>`
-      : `<div class="mwhy" style="color:var(--text-muted)">➖ 這半年幾乎沒動，看不出方向</div>`;
-    return `<div class="mitem"><div class="mrow">
-      <span class="mname">${esc(m.name)}</span>
-      <span class="mval">${m.value}${esc(m.unit === "%" ? "%" : " " + m.unit)}</span>
-      <span class="mchg" style="color:${color}">${arrow} 近${d.months}月 ${c === null ? "—" : (c > 0 ? "+" : "") + c}</span>
+/* 一次只給一張卡。五、六個指標平鋪成一張表，每一列都長一樣，結果是一個都沒看進去；
+   一次一張就有空間把「現在幾趴、半年來怎麼走、對這個產業是好是壞」講完。 */
+/* 翻轉圖卡。正面照舊，背面回答同一件事：這個數字哪來的、怎麼算出來的。
+   rows 是 [小標題, 內文 HTML] 的陣列 —— 每張卡的背面長得一樣，讀的人不用重新學版面。 */
+function flipCard(front, title, rows) {
+  return `<div class="flipc">
+    <button type="button" class="flipb" title="這些數字怎麼來的？"
+      aria-label="${esc(title)}：資料來源與計算方式">ⓘ</button>
+    <div class="flipf">${front}</div>
+    <div class="flipk"><h4>${esc(title)}：數字哪來的、怎麼算的</h4>
+      <dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl></div>
+  </div>`;
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest(".flipb");
+  if (b) b.closest(".flipc").classList.toggle("on");
+});
+
+function macroCardHTML(m, months) {
+  const c = m.change, arrow = c === null ? "→" : c > 0 ? "▲" : c < 0 ? "▼" : "→";
+  // 顏色跟著「對這個產業是好是壞」走，不是跟著數字大小走 —— 失業率往上不該是綠的
+  const color = c ? (m.effect.good ? "var(--good)" : "var(--critical)") : "var(--text-muted)";
+  const e = m.effect;
+  const why = e
+    ? `<div class="mwhy" style="color:${e.good ? "var(--good)" : "var(--critical)"}">
+         ${e.good ? "✅ 對這家公司偏正向" : "❌ 對這家公司偏負面"}：${esc(e.text)}</div>`
+    : `<div class="mwhy" style="color:var(--text-muted)">➖ 這半年幾乎沒動，看不出方向</div>`;
+  return `<div class="mcard">
+    <div class="mname">${esc(m.name)}</div>
+    <div class="mval">${m.value}${esc(m.unit === "%" ? "%" : " " + m.unit)}</div>
+    <div class="mtrend">
+      <span class="mchg" style="color:${color}">${arrow} 近${months}月 ${c === null ? "—" : (c > 0 ? "+" : "") + c}</span>
       ${sparkSVG(m.spark, m.rising_good)}
       <span class="mdate">${esc(m.date)}</span>
-    </div>${why}</div>`;
-  };
-  return `<h3>這些因素現在的數字（FRED 美國聯準會資料庫）</h3>
-    <div class="macro">${d.rows.map(row).join("")}</div>
+    </div>
+    ${why}
+  </div>`;
+}
+
+const macro = { rows: [], months: 6, idx: 0 };
+
+function macroHTML(d) {
+  if (!d.rows.length) return "";
+  const dots = d.rows.map((m, i) =>
+    `<button type="button" class="mdot${i === macro.idx ? " on" : ""}" data-i="${i}"
+      title="${esc(m.name)}" aria-label="${esc(m.name)}"></button>`).join("");
+  // 所有卡片一次都畫出來排成一條，換頁是把整條平移 —— 才有投影片那種滑過去的感覺
+  return flipCard(`<h3>這些因素現在的數字（FRED 美國聯準會資料庫）</h3>
+    <div class="mdeck">
+      <button type="button" class="mnav" id="mPrev" aria-label="上一個指標">◀</button>
+      <div class="mview"><div class="mtrack" id="mTrack">${
+        d.rows.map(m => macroCardHTML(m, d.months)).join("")}</div></div>
+      <button type="button" class="mnav" id="mNext" aria-label="下一個指標">▶</button>
+    </div>
+    <div class="mdots" id="mDots">${dots}</div>
     <div class="caveat">✅ / ❌ 判斷的是<strong>這半年的變化方向</strong>對「${esc(d.sector_label || "這個產業")}」這個<strong>產業</strong>是好是壞，
       規則寫在 <code>FRED_EFFECT</code>，同一個指標對不同產業可能相反（升息壓垮多數公司，銀行保險反而賺更多）。
-      它說的是產業的通則，不是這家公司的個別狀況，也不是股價會漲會跌的預測。</div>`;
+      它說的是產業的通則，不是這家公司的個別狀況，也不是股價會漲會跌的預測。</div>`,
+    "總體經濟指標", [
+      ["資料從哪來", `美國聯準會的公開資料庫 <strong>FRED</strong>（Federal Reserve Economic Data），
+        由聖路易聯邦準備銀行維護。每個指標有一個代號，程式直接抓那個代號的<strong>原始觀測值</strong>，
+        中間沒有任何加工或人工調整。這一頁用到的代號列在 <code>FRED_SERIES</code>。`],
+      ["顯示哪些指標", `看這家公司屬於哪個<strong>產業</strong>而定，對照表在 <code>SECTOR_FRED</code>。
+        例如房地產會看房貸利率和新屋開工，能源會看油價 —— 不是每家公司都看同一組。`],
+      ["「現在的數字」是什麼", `該指標<strong>最新那一筆</strong>觀測值，卡片右下角就是它的日期。
+        利率是日頻、CPI 是月頻，所以不同卡片的日期不會一樣，這是正常的。`],
+      ["百分比型的指標怎麼算", `利率、失業率這種本來就是「幾趴」的，<strong>直接用原始值</strong>。
+        CPI、生產者物價、工業生產、零售銷售這幾個原始資料是<strong>指數</strong>（例如 310.3），
+        指數的絕對值沒有意義，所以改算<strong>年增率</strong>：這個月 ÷ 十二個月前 − 1。
+        哪一個用哪種算法寫在 <code>FRED_SERIES</code> 的第三欄。`],
+      ["「近 6 月」那個箭頭怎麼算", `最新那筆的值，減掉<strong>182 天前</strong>那筆的值
+        （<code>FRED_CHANGE_DAYS = 182</code>）。不是減「往前數第幾筆」——
+        日頻和月頻筆數差很多，用日期算才是同一套標準。找不到 182 天前的資料就顯示「—」，不硬湊。`],
+      ["小折線圖畫的是什麼", `這個指標的完整歷史，等距抽成 36 個點
+        （<code>FRED_SPARK_POINTS = 36</code>）畫出來看形狀。它只給你趨勢感，不是拿來讀數值的。`],
+      ["✅ ❌ 是誰決定的", `是<strong>人工寫死的產業通則</strong>，不是算出來的，規則在
+        <code>FRED_EFFECT</code>（通則）和 <code>FRED_EFFECT_BY_SECTOR</code>（產業例外）。
+        每個指標登記「往上對這個產業是好還是壞」，再看這半年實際是往上還是往下。
+        半年內幾乎沒動的，就不給方向 —— 不硬湊一個結論。`],
+      ["它不會告訴你什麼", `這裡<strong>沒有任何預測</strong>，全部是已經公布的歷史數字加減法。
+        而且講的是產業的通則，不是這家公司的個別狀況，更不是股價會漲會跌。`],
+    ]);
+}
+
+// 到頭到尾就沒有箭頭。會繞回去的話，翻到底也不知道自己翻到底了
+function macroGo(i) {
+  const last = macro.rows.length - 1;
+  macro.idx = Math.min(Math.max(i, 0), last);
+  $("#mTrack").style.transform = `translateX(-${macro.idx * 100}%)`;
+  $$("#mDots .mdot").forEach((b, k) => b.classList.toggle("on", k === macro.idx));
+  $("#mPrev").classList.toggle("gone", macro.idx === 0);
+  $("#mNext").classList.toggle("gone", macro.idx === last);
 }
 
 function loadMacro(sector) {
   $("#macro").innerHTML = `<div class="nohit">讀取總體經濟指標…</div>`;
   fetch(`/api/macro?sector=${encodeURIComponent(sector)}`).then(r => r.json()).then(d => {
     if (d.error) throw new Error(d.error);
+    macro.rows = d.rows; macro.months = d.months; macro.idx = 0;
     $("#macro").innerHTML = macroHTML(d);
+    if (!d.rows.length) return;
+    $("#mPrev").onclick = () => macroGo(macro.idx - 1);
+    $("#mNext").onclick = () => macroGo(macro.idx + 1);
+    $$("#mDots .mdot").forEach(b => b.onclick = () => macroGo(+b.dataset.i));
+    macroGo(0);   // 第一張就要把左箭頭收掉
   }).catch(err => {
     $("#macro").innerHTML = `<div class="err">✕ FRED 指標載入失敗：${esc(err.message)}</div>`;
   });
 }
 
+/* 上面四個數字已經把量講完了，這裡只回答「所以呢」：偏哪邊、以及這個偏法有多少份量。 */
+function moodSayHTML(pos, neg, neu) {
+  const loud = pos + neg;
+  const total = loud + neu;
+  if (!total) return "";
+  const share = loud / total * 100;
+  const tilt = loud ? pos / loud * 100 : 50;
+  const verdict = !loud ? "這段期間沒有任何帶情緒的標題，全是例行報導。"
+    : tilt >= 70 ? `<b style="color:var(--good)">明顯偏正面</b>`
+      : tilt <= 30 ? `<b style="color:var(--critical)">明顯偏負面</b>`
+        : `<b style="color:var(--warning)">正負拉鋸，沒有一面倒</b>`;
+  return `<div class="mood-say">${verdict}${loud ? `（帶情緒的 ${loud} 則裡
+    <b style="color:var(--good)">👍 ${tilt.toFixed(0)}%</b>、<b style="color:var(--critical)">👎 ${(100 - tilt).toFixed(0)}%</b>）
+    —— 但只有 ${share.toFixed(0)}% 的標題帶情緒，
+    比例越低越代表這是<strong>少數幾則在講話</strong>，不是輿論。` : ""}</div>`;
+}
+
 function render(r) {
-  const okSrc = [...state.tasks.values()].filter(t => t.status === "done").length;
+  const okSrc =[...state.tasks.values()].filter(t => t.status === "done").length;
   const all = allArticles(r);
   const n = s => all.filter(a => a.sentiment === s).length;
 
   if (chart.symbol === r.symbol) {
     chart.name = r.name; chart.logo = r.logo; chart.sector = r.basics.sector || ""; chart.basics = r.basics;
-    renderQuote(); loadCompare();
+    renderQuote(); loadCompare(); askLabel();
   }
 
   $("#basics").innerHTML = basicsHTML(r);
@@ -1169,10 +1639,7 @@ function render(r) {
 
   $("#summary").innerHTML = `
     <div class="card">
-      <div class="headline-row">
-        <span class="big sym">${esc(r.symbol)}</span>
-        <span class="co">${esc(r.name)}${r.industry ? " · " + esc(r.industry) : ""}</span>
-      </div>
+      <h2>新聞風向</h2>
       <div class="meta">近 ${r.days} 天 · ${okSrc}/${state.tasks.size} 個來源成功</div>
       <div class="scoreboard">
         <div class="score"><div class="sv">${all.length}</div><div class="sl">抓到的新聞</div></div>
@@ -1180,7 +1647,7 @@ function render(r) {
         <div class="score neg"><div class="sv">👎 ${n("negative")}</div><div class="sl">負面</div></div>
         <div class="score mut"><div class="sv">▪️ ${n("neutral")}</div><div class="sl">中性（已隱藏）</div></div>
       </div>
-      ${coverageNote(r)}
+      ${moodSayHTML(n("positive"), n("negative"), n("neutral"))}
     </div>`;
 
   $("#out").innerHTML = `
@@ -1234,15 +1701,6 @@ function sentimentExplainer(neutral, total) {
       <p class="warn-line">⚠️ 這是拿來<strong>縮小閱讀範圍</strong>的粗篩，不是買賣訊號。看到 👍 還是要點開讀原文。</p>
     </div>
   </details>`;
-}
-
-function coverageNote(r) {
-  const c = r.news_coverage;
-  if (!c.from) return "";
-  const gap = r.events.filter(e => !e.covered).length;
-  if (!gap) return `<div class="meta" style="margin-top:-12px">新聞涵蓋 ${c.from} ～ ${c.to}</div>`;
-  return `<div class="meta" style="margin-top:-12px;color:var(--critical)">
-    ⛔ 新聞只涵蓋 ${c.from} ～ ${c.to}，早於 ${c.from} 的 ${gap} 個異動日沒有新聞資料可比對（不是沒有新聞）。</div>`;
 }
 
 const VERDICT_ICON = { market: "🌊", alpha: "🎯", counter: "⚡", unknown: "❔" };
@@ -1424,9 +1882,246 @@ document.addEventListener("mouseover", e => {
 document.addEventListener("mouseout", e => { if (e.target.closest(".etf")) hideEtfTip(); });
 
 /* ---------- 資金流向：錢正在從哪一格搬到哪一格 ---------- */
+const rotTone = t => t === "in" ? "var(--good)" : t === "out" ? "var(--critical)" : "var(--text-muted)";
+
+/* 比值走勢線。期末那個百分比只講「終點在哪」，講不出「怎麼走到那裡的」——
+   一路慢慢跌，跟先衝上去再摔回來，期末數字可以一模一樣，但意思完全相反。
+   零線就是區間第一天，線在零線上面＝那段期間這個比值比開頭高。 */
+function rotRatioSVG(line, tone) {
+  if (line.length < 2) return "";
+  const W = 260, H = 44, pad = 3;
+  const reach = Math.max(...line.map(Math.abs), 0.5);
+  const px = i => (i / (line.length - 1) * W).toFixed(1);
+  const py = v => (pad + (1 - (v / reach + 1) / 2) * (H - 2 * pad)).toFixed(1);
+  const pts = line.map((v, i) => `${px(i)},${py(v)}`).join(" ");
+  return `<svg class="rot-ratio" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" y1="${py(0)}" x2="${W}" y2="${py(0)}" stroke="var(--axis)" stroke-width="1"/>
+    <polyline points="${pts}" fill="none" stroke="${tone}" stroke-width="2"
+      stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function rotRiskHTML(r) {
+  const tone = rotTone(r.tone);
+  return `<div class="rot-risk">
+    <b style="color:${tone}">${esc(r.name)}</b>
+    <span style="color:var(--text-muted)">（${r.pair.split("÷").map(etfTag).join("÷")}）</span>
+    <div class="rot-risk-body">
+      <div>${esc(r.text)}
+        <span class="num" style="color:${tone}">${r.move > 0 ? "+" : ""}${r.move}%</span>
+        <span style="color:var(--text-muted)">（近三月 ${r.moves["3月"] > 0 ? "+" : ""}${r.moves["3月"]}%
+        近一年 ${r.moves["12月"] > 0 ? "+" : ""}${r.moves["12月"]}%）</span></div>
+      ${rotRatioSVG(r.line, tone)}
+    </div>
+  </div>`;
+}
+
+/* ---------- RRG：十一個板塊 = 同一張二維圖上的十一個點 ----------
+   十一個產業不是十一個維度。兩個軸是「對每個產業都問的同兩個問題」：
+   X＝現在比大盤強多少，Y＝這個強度正在變強還變弱。錢是順時針轉的。 */
+const RRG_Q = {
+  lead:    { name: "領先",     v: "--good",       say: "最強，而且還在加速 —— 錢已經在這裡" },
+  weaken:  { name: "轉弱",     v: "--warning",    say: "還算強，但動能在鬆手 —— 錢開始撤了" },
+  improve: { name: "改善中",   v: "--series-1",   say: "現在還弱，但正在追上來 —— 錢剛開始進來" },
+  lag:     { name: "落後",     v: "--critical",   say: "弱，而且還在往下掉 —— 錢已經走了" },
+  flat:    { name: "跟大盤一樣", v: "--text-muted", say: "站在原點上，強弱都談不上" },
+};
+// 順序＝錢輪動的順序：改善中 → 領先 → 轉弱 → 落後
+const RRG_ORDER = ["improve", "lead", "weaken", "lag", "flat"];
+
+// 越右上越綠、越左下越紅。x 和 y 一起決定顏色，所以光看顏色就知道強不強，不用讀數字
+function rrgColour(x, y, span) {
+  const t = Math.max(-1, Math.min(1, (x + y) / (2 * span)));
+  return `hsl(${((t + 1) / 2 * 140).toFixed(0)} 72% ${(52 + t * 6).toFixed(0)}%)`;
+}
+
+function rrgHTML(d) {
+  const pts = d.rrg;
+  if (!pts.length) return "";
+  // 尺是「所有區間共用一把」，不是每一格自己算。每格自己算的話，
+  // 拉桿一動整張圖就重新縮放 —— 同一個板塊的終點明明沒變，看起來卻在跑
+  const span = rot.span;
+  const W = 1180, H = 580, pad = 30;
+  const px = v => (pad + (v / span + 1) / 2 * (W - 2 * pad)).toFixed(1);
+  const py = v => (pad + (1 - (v / span + 1) / 2) * (H - 2 * pad)).toFixed(1);
+  const cx = +px(0), cy = +py(0), hi = +px(span), lo = +px(-span);
+
+  const quad = (x, y, w, h, q) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}"
+       fill="var(${RRG_Q[q].v})" opacity=".05"/>
+     <text x="${x + w / 2}" y="${y + (y < cy ? 17 : h - 8)}" text-anchor="middle"
+       font-size="12.5" fill="var(${RRG_Q[q].v})" opacity=".85">${RRG_Q[q].name}</text>`;
+
+  // 標籤全部往下推開，十一個名字才不會疊成一坨。看不懂圖沒關係，下面的清單才是答案
+  const lay = pts.map(p => ({ p, x: +px(p.x), y: +py(p.y) })).sort((a, b) => a.y - b.y);
+  let prev = -1e9;
+  lay.forEach(o => { o.ly = Math.max(o.y, prev + 13); prev = o.ly; });
+
+  const dot = o => {
+    const c = rrgColour(o.p.x, o.p.y, span);
+    const path = o.p.tail.map((t, i) => `${i ? "L" : "M"}${px(t.x)},${py(t.y)}`).join("");
+    const mine = o.p.label === rot.mine;
+    return `<g class="rrg-dot" data-label="${esc(o.p.label)}" data-etf="${esc(o.p.etf)}"
+        data-x="${o.p.x}" data-y="${o.p.y}" data-q="${o.p.quadrant}" data-c="${c}">
+      <path d="${path}" fill="none" stroke="${c}" stroke-width="2" opacity=".45"
+        stroke-linecap="round" stroke-linejoin="round"/>
+      ${o.p.tail.slice(0, -1).map((t, i) =>
+        `<circle class="rrg-bead" cx="${px(t.x)}" cy="${py(t.y)}" r="2.2" fill="${c}"
+           opacity="${(0.2 + 0.55 * i / o.p.tail.length).toFixed(2)}"/>`).join("")}
+      ${mine ? `<circle cx="${o.x}" cy="${o.y}" r="12" fill="none"
+        stroke="var(--neon-yellow)" stroke-width="2"/>` : ""}
+      <circle class="rrg-now" cx="${o.x}" cy="${o.y}" r="7" fill="${c}"/>
+      <text class="rrg-name" x="${o.x + 12}" y="${(o.ly + 4).toFixed(1)}"
+        data-lx="${o.x + 12}" data-ly="${(o.ly + 4).toFixed(1)}"
+        font-size="12.5" fill="${c}">${esc(o.p.label)}</text>
+      <circle class="rrg-hit" cx="${o.x}" cy="${o.y}" r="16" fill="transparent"/>
+    </g>`;
+  };
+
+  const group = q => {
+    const inq = pts.filter(p => p.quadrant === q);
+    if (!inq.length) return "";
+    return `<div class="rrg-group" style="border-color:var(${RRG_Q[q].v})">
+      <b style="color:var(${RRG_Q[q].v})">${RRG_Q[q].name}</b>
+      <span class="rrg-names">${inq.map(p => esc(p.label)).join("、")}</span>
+      <div class="rrg-say">${RRG_Q[q].say}</div></div>`;
+  };
+
+  // 左邊的分類清單。顏色跟圖上那顆點一樣，名字和點才對得起來
+  const picks = pts.map(p =>
+    `<button type="button" class="rrg-pick" data-etf="${esc(p.etf)}"
+       style="color:${rrgColour(p.x, p.y, span)}"
+       aria-label="播放 ${esc(p.label)} 的軌跡"><i></i><span>${esc(p.label)}</span></button>`).join("");
+
+  return `<div class="rrg-deck">
+    <div class="rrg-list" id="rrgList">${picks}</div>
+    <div class="rrg-wrap" id="rrgWrap"
+      data-w="${W}" data-h="${H}" data-pad="${pad}" data-span="${span.toFixed(4)}">
+      <svg viewBox="0 0 ${W} ${H}" role="img"
+        aria-label="板塊輪動圖：橫軸是比大盤強多少，縱軸是動能">
+        ${quad(cx, pad, hi - cx, cy - pad, "lead")}
+        ${quad(lo, pad, cx - lo, cy - pad, "improve")}
+        ${quad(cx, cy, hi - cx, H - pad - cy, "weaken")}
+        ${quad(lo, cy, cx - lo, H - pad - cy, "lag")}
+        <line x1="${lo}" y1="${cy}" x2="${hi}" y2="${cy}" stroke="var(--border)"/>
+        <line x1="${cx}" y1="${pad}" x2="${cx}" y2="${H - pad}" stroke="var(--border)"/>
+        <text x="${hi}" y="${cy - 7}" text-anchor="end" font-size="12"
+          fill="var(--text-muted)">比大盤強 →</text>
+        <text x="${cx + 6}" y="${pad + 2}" font-size="12"
+          fill="var(--text-muted)">↑ 動能在變強</text>
+        ${lay.map(dot).join("")}
+      </svg>
+      <div class="rrg-tip hidden" id="rrgTip"></div>
+    </div></div>
+    <div style="margin-top:12px">${RRG_ORDER.map(group).join("")}</div>`;
+}
+
+/* ── 讓軌跡走起來 ──────────────────────────────────────────────
+   靜止的尾巴只告訴你「走過哪裡」，走起來才看得出「正在往哪個象限轉」。
+   位置直接問 SVG 路徑本身（getPointAtLength），不用自己內插 —— 路徑已經知道怎麼走了。 */
+const RRG_WALK_MS = 2600;
+let rrgRaf = 0;
+
+/* 把一個板塊畫在它整條路的 p（0～1）處。p = 1 就是回到終點的靜止狀態。 */
+function rrgPaint(wrap, g, p) {
+  const W = +wrap.dataset.w, H = +wrap.dataset.h;
+  const pad = +wrap.dataset.pad, span = +wrap.dataset.span;
+  // 把畫布座標換回資料座標，顏色才能跟著「走到哪就變到哪」
+  const ux = v => ((v - pad) / (W - 2 * pad) * 2 - 1) * span;
+  const uy = v => (1 - (v - pad) / (H - 2 * pad) * 2) * span;
+  const path = g.querySelector("path"), now = g.querySelector(".rrg-now");
+  const name = g.querySelector(".rrg-name");
+  const L = path.getTotalLength();
+  path.style.strokeDasharray = L;
+  path.style.strokeDashoffset = L * (1 - p);
+  const at = path.getPointAtLength(L * p);
+  now.setAttribute("cx", at.x); now.setAttribute("cy", at.y);
+  const c = rrgColour(ux(at.x), uy(at.y), span);
+  now.setAttribute("fill", c); path.setAttribute("stroke", c); name.setAttribute("fill", c);
+  // 走的時候名字跟著點跑；停下來才回到那排「彼此錯開」的位置
+  name.setAttribute("x", p < 1 ? at.x + 12 : name.dataset.lx);
+  name.setAttribute("y", p < 1 ? at.y + 4 : name.dataset.ly);
+}
+
+/* 一次只走一個板塊，走完就停。要再看一次就再按一次 —— 自動循環的話，
+   畫面上永遠有東西在動，反而沒辦法停下來看清楚任何一條。 */
+function rrgWalk(wrap, etf) {
+  cancelAnimationFrame(rrgRaf);
+  rrgReset(wrap);
+  const g = wrap.querySelector(`.rrg-dot[data-etf="${etf}"]`);
+  if (!g) return;
+  wrap.classList.add("playing", "picking");
+  g.classList.add("on");
+  $$("#rrgList .rrg-pick").forEach(b => b.classList.toggle("on", b.dataset.etf === etf));
+  const t0 = performance.now();
+  const step = now => {
+    if (!document.body.contains(g)) return;
+    const p = Math.min((now - t0) / RRG_WALK_MS, 1);
+    rrgPaint(wrap, g, p);
+    if (p < 1) return void (rrgRaf = requestAnimationFrame(step));
+    // 走完了。點和名字留在終點、亮著，但不再吃掉整張圖的注意力
+    wrap.classList.remove("playing", "picking");
+    g.classList.remove("on");
+  };
+  rrgRaf = requestAnimationFrame(step);
+}
+
+/* 全部回到靜止的終點狀態。 */
+function rrgReset(wrap) {
+  wrap.classList.remove("playing", "picking");
+  wrap.querySelectorAll(".rrg-dot").forEach(g => {
+    g.classList.remove("on");
+    rrgPaint(wrap, g, 1);
+  });
+  $$("#rrgList .rrg-pick").forEach(b => b.classList.remove("on"));
+}
+
+/* 拉桿每動一次就把 #rotDyn 整塊換掉，舊的動畫會對著已經不存在的節點畫。
+   所以每次重畫都要重接一次。 */
+function rrgSync() {
+  cancelAnimationFrame(rrgRaf);
+  const wrap = $("#rrgWrap");
+  if (!wrap) return;
+  rrgReset(wrap);
+  $("#rrgList").onclick = e => {
+    const b = e.target.closest(".rrg-pick");
+    if (b) rrgWalk(wrap, b.dataset.etf);
+  };
+}
+
+/* 滑鼠移到哪一顆，就把那一顆的座標和其他十條尾巴的干擾一起處理掉 */
+document.addEventListener("mousemove", e => {
+  const wrap = e.target.closest(".rrg-wrap");
+  if (!wrap) return;
+  const g = e.target.closest(".rrg-dot");
+  const tip = wrap.querySelector(".rrg-tip");
+  wrap.classList.toggle("picking", !!g);
+  wrap.querySelectorAll(".rrg-dot").forEach(o => o.classList.toggle("on", o === g));
+  if (!g) return tip.classList.add("hidden");
+  const c = g.dataset.c, q = RRG_Q[g.dataset.q];
+  const x = +g.dataset.x, y = +g.dataset.y;
+  const sign = v => (v > 0 ? "+" : "") + v.toFixed(2);
+  tip.innerHTML = `<b style="color:${c}">${esc(g.dataset.label)}　${esc(g.dataset.etf)}</b>
+    <span class="rrg-xy" style="color:${c}">( ${sign(x)} , ${sign(y)} )</span>
+    <span style="color:var(${q.v})">${q.name}</span>
+    <div class="rrg-say">比大盤強 ${sign(x)}，動能 ${sign(y)}</div>
+    <div class="rrg-say">${q.say}</div>`;
+  tip.style.borderColor = c;
+  const r = wrap.getBoundingClientRect();
+  tip.style.left = `${e.clientX - r.left}px`;
+  tip.style.top = `${e.clientY - r.top - 14}px`;
+  tip.classList.remove("hidden");
+});
+document.addEventListener("mouseleave", e => {
+  const wrap = e.target.closest && e.target.closest(".rrg-wrap");
+  if (!wrap) return;
+  wrap.classList.remove("picking");
+  wrap.querySelector(".rrg-tip").classList.add("hidden");
+}, true);
+
 function rotationHTML(d) {
   const top = Math.max(...d.sectors.map(x => Math.abs(x.rs)), 1);
-  const colour = t => t === "in" ? "var(--good)" : t === "out" ? "var(--critical)" : "var(--text-muted)";
+  const colour = rotTone;
   // 條從中間往兩邊長。贏大盤往右、輸大盤往左 —— 零點對齊才看得出誰在哪一邊
   const row = x => {
     const w = Math.abs(x.rs) / top * 50;
@@ -1436,91 +2131,336 @@ function rotationHTML(d) {
     return `<div class="rot-row${x.label === rot.mine ? " me" : ""}">
       <span>${esc(x.label)}　${etfTag(x.etf)}</span>
       <span class="rot-bar">${bar}</span>
-      <span class="num" style="text-align:right;color:${colour(x.tone)}">${x.rs > 0 ? "+" : ""}${x.rs}</span>
+      <span class="num" style="text-align:right;color:${colour(x.tone)}">${x.rs > 0 ? "+" : ""}${x.rs}%</span>
     </div>`;
   };
-  const risk = r => `<div class="rot-risk">
-    <b style="color:${colour(r.tone)}">${esc(r.name)}</b>
-    <span style="color:var(--text-muted)">（${r.pair.split("÷").map(etfTag).join("÷")}）</span>
-    <div style="margin-top:4px">${esc(r.text)}　
-      <span style="color:var(--text-muted)">近三月 ${r.moves["3月"] > 0 ? "+" : ""}${r.moves["3月"]}%　
-      近一年 ${r.moves["12月"] > 0 ? "+" : ""}${r.moves["12月"]}%</span></div>
-  </div>`;
-
-  const ranges = d.ranges.map(r =>
-    `<label><input type="radio" name="rotrange" value="${r.days}"${r.days === d.days ? " checked" : ""}>
-      <span>${esc(r.label)}</span></label>`).join("");
-
-  return `<div class="rot-head">
-      <h3>哪個板塊在贏大盤</h3>
-      <div class="ranges chart-ranges" id="rotRanges" role="group" aria-label="資金流向區間">${ranges}</div>
-    </div>
-    <div class="meta">看最近 ${esc(d.range_label)}（${d.days} 個交易日），資料到 ${esc(d.asof)}</div>
-    <div class="overview">${d.sectors.map(row).join("")}</div>
+  return `<div class="meta">看最近 <b class="rot-span">${esc(d.range_label)}</b>（${d.days} 個交易日），資料到 ${esc(d.asof)}</div>
+    ${rrgHTML(d)}
+    <h3 class="rot-h">同一份資料換個排法：誰贏大盤幾 %</h3>
+    <div class="overview"><div class="rot-row hd">
+      <span>板塊</span><span style="text-align:center">輸大盤 ←　│　→ 贏大盤</span>
+      <span style="text-align:right">比大盤多漲</span></div>${d.sectors.map(row).join("")}</div>
     <div class="rot-verdict">${esc(d.verdict.text)}</div>
-    <h3 class="rot-h">錢現在敢不敢冒險</h3>
-    ${d.risk.map(risk).join("")}
-    <div class="caveat">看「漲多少」會被騙：整袋錢變大的時候大家都漲。所以這裡算的是
-      <strong>相對強度＝板塊價格 ÷ 大盤價格</strong> —— 整袋變大變小會被分子分母一起吃掉，
-      剩下的才是錢在板塊之間搬家。數字的單位是<strong>百分點</strong>：
-      正的＝這段期間贏大盤這麼多，錢在搬進來；負的＝輸大盤，錢在流出去。
-      上下順序是<strong>固定的</strong>，換區間不會重排 —— 要比大小看<strong>長條</strong>，
-      不是看名次；每換一次就跳一次位置的話，根本追不到自己在看的那一條。<br>
-      下半部每一列是一個天秤：左邊危險、右邊安全，往哪邊倒就是錢往哪邊跑。
-      每一列量的是<strong>不同的一件事</strong>（一般人敢不敢花錢、股票裡敢不敢追成長、
-      借錢的敢不敢借給爛公司、抱不抱得住亂跳的股票、最投機的錢在不在）。
-      它們<strong>互相打架是正常的，那個矛盾本身就是訊息</strong>：
-      代表錢不是在「進攻 vs 防禦」之間輪動，而是從每一個地方抽出來、全部灌進同一個地方。
-      資料來源：Yahoo 的 11 檔 SPDR 類股 ETF、SPY，以及 HYG／TLT、SPHB／SPLV、IBIT／GLD。</div>`;
+    <h3 class="rot-h">錢現在敢不敢冒險（同樣看 ${esc(d.range_label)}）</h3>
+    ${d.risk.map(rotRiskHTML).join("")}`;
 }
 
-const rot = { mine: "", days: 21 };
+/* 拉桿的每一格都是「同一份收盤價再除一次」，所以後端一次把 27 格全算好送來，
+   這裡純記憶體切換。走網路的話拖一下就要等一次 Yahoo，那不叫拉桿。 */
+function rotationShell(frames, idx) {
+  return `<div class="rot-head">
+      <h3>每個板塊比大盤強多少（基準：SPY 標普 500）</h3>
+      <div class="rot-slider">
+        <span class="rs-end">1 天</span>
+        <input type="range" id="rotSlider" min="0" max="${frames.length - 1}" step="1" value="${idx}"
+          aria-label="RRG 要看多長的區間">
+        <span class="rs-end">半年</span>
+      </div>
+    </div>
+    <div id="rotDyn">${rotationHTML(frames[idx])}</div>`;
+}
 
-function loadRot(days) {
-  rot.days = days;
-  $("#rotBody").innerHTML = `<div class="loading">讀取資金流向…</div>`;
-  fetch(`/api/rotation?days=${days}`).then(r => r.json()).then(d => {
+// frames 是後端一次算好的所有區間，idx 是拉桿現在停在第幾格。
+// span 是 RRG 的座標軸尺度，一次從所有區間算出來 —— 拉桿動的時候尺不能跟著動
+const rot = { mine: "", frames: [], idx: 0, span: 1 };
+
+function loadRot() {
+  if (rot.frames.length) return drawRot();
+  $("#rotBody").innerHTML = `<div class="loading">讀取 RRG…</div>`;
+  fetch("/api/rotation").then(r => r.json()).then(d => {
     if (d.error) throw new Error(d.error);
-    $("#rotBody").innerHTML = rotationHTML(d);
-    $("#rotRanges").onchange = e => loadRot(+e.target.value);
+    rot.frames = d.frames;
+    // 最長的那一格決定尺的大小，所有格子共用 —— 這樣任一板塊的終點在每一格都落在同一個像素
+    rot.span = Math.max(...d.frames.flatMap(f => f.rrg).flatMap(p => [p, ...p.tail])
+      .flatMap(p => [Math.abs(p.x), Math.abs(p.y)]), 2.5) * 1.08;
+    rot.idx = Math.max(0, d.frames.findIndex(f => f.days === d.default_days));
+    drawRot();
   }).catch(err => {
-    $("#rotBody").innerHTML = `<div class="err">✕ 資金流向載入失敗：${esc(err.message)}</div>`;
+    $("#rotBody").innerHTML = `<div class="err">✕ RRG 載入失敗：${esc(err.message)}</div>`;
   });
+}
+
+function drawRot() {
+  $("#rotBody").innerHTML = rotationShell(rot.frames, rot.idx);
+  rrgSync();
+  // 只重畫會變的那一塊。整個 shell 重畫會把拉桿自己換掉，拖到一半就斷手
+  $("#rotSlider").oninput = e => {
+    rot.idx = +e.target.value;
+    $("#rotDyn").innerHTML = rotationHTML(rot.frames[rot.idx]);
+    rrgSync();
+  };
 }
 
 function openRot() {
   rot.mine = chart.basics ? (chart.basics.sector_label || "") : "";
   $("#rotModal").classList.remove("hidden");
-  loadRot(rot.days);
+  loadRot();
 }
-function closeRot() { $("#rotModal").classList.add("hidden"); hideEtfTip(); }
+function closeRot() { $("#rotModal").classList.add("hidden"); modalMin("rotModal", false); hideEtfTip(); }
 
 $("#btnRot").onclick = openRot;
 $("#rotClose").onclick = closeRot;
 $("#rotModal").onclick = e => { if (e.target.id === "rotModal") closeRot(); };
 
+/* ---------- 問法說會 ----------
+   模型回的是 Markdown。這裡只認三種記號：### 小標、**粗體**、[字](網址)。
+   搬一整包 Markdown 函式庫進來，只為了這三種，不划算。 */
+function askMD(text) {
+  const inline = s => esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (_, t, u) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  // 同一個詞只標第一次。每次都標的話，「年增」在一段裡出現四次就紅四次，
+  // 整段變成聖誕樹 —— 全部都紅等於全部都不紅
+  const seen = new Set();
+  return text.split("\n").map(line => {
+    const head = line.match(/^#{2,4}\s+(.*)$/);
+    // 小標不標紅。它本來就是黃色粗體，再加一層紅色是替已經很大聲的東西再喊一次
+    if (head) return `<h4>${inline(head[1])}</h4>`;
+    return line.trim() ? `<p>${askMark(inline(line), seen)}</p>` : "";
+  }).join("");
+}
+
+/* 關鍵字上色。清單跟「哪個是好消息」都是後端 config 給的 —— 前端只負責畫。
+
+   一定要在 HTML 已經組好之後才做，而且只能碰「標籤外面的文字」：
+   直接對整串 HTML 做 replace 的話，網址裡剛好有「風險」兩個字就會被塞進一個 <mark>，
+   連結當場爛掉。所以用 <...> 把字串切開，只處理偶數段（標籤以外的部分）。 */
+let askRe = null;
+let askTone = {};
+
+function askMark(html, seen) {
+  if (!askRe) return html;
+  return html.split(/(<[^>]+>)/).map((chunk, i) =>
+    i % 2 ? chunk : chunk.replace(askRe, m => {
+      if (seen.has(m)) return m;
+      seen.add(m);
+      return `<mark class="ask-key ${askTone[m]}">${m}</mark>`;
+    })).join("");
+}
+
+/* 三組詞攤平成一張「詞 → 顏色」的表，然後只編一條正規表示式。
+   三組各編一條的話，同一個位置會被掃三次，而且「只標第一次」那個 Set 要跨三次比對，
+   誰先跑誰就贏 —— 那是排列順序決定結果，不是規則決定結果。
+
+   長的詞排前面。不排的話「樂觀」會先吃掉「明顯樂觀」的後兩個字，標出來變成「明顯<樂觀>」，
+   而且顏色還會從綠變成另一個綠 —— 跨組的話更慘，「維持財測」會被「財測」吃掉。 */
+function askKeywords(groups) {
+  askTone = {};
+  for (const tone in groups) for (const w of groups[tone]) askTone[w] = tone;
+  const safe = Object.keys(askTone).sort((a, b) => b.length - a.length)
+    .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  askRe = safe.length ? new RegExp(safe.join("|"), "g") : null;
+}
+
+/* 一則回答，附上它到底有沒有去查網路。 */
+function askSayHTML(d) {
+  const src = d.sources.length
+    ? `查了 ${d.sources.length} 個來源：` + d.sources.map((s, i) =>
+        `<a href="${esc(s.url)}" target="_blank" rel="noopener">${i + 1}. ${esc(s.title)}</a>`).join("　")
+    : "這一題沒有上網查，是模型自己答的 —— 涉及數字的話請自己再確認一次。";
+  return `<div class="ask-turn"><div class="ask-say">${askMD(d.answer)}</div>
+    <div class="ask-src${d.sources.length ? "" : " memory"}">${src}</div></div>`;
+}
+
+const ask = { symbol: "", busy: false };
+
+function askLock(busy) {
+  ask.busy = busy;
+  $("#askInput").disabled = busy;
+  $("#askSend").disabled = busy;
+  // 縮起來的時候看不到等待動畫，標題列上這顆點就是唯一的「還在跑」訊號
+  $("#askBusy").classList.toggle("on", busy);
+}
+
+/* 等的時候要讓人看得出「它還活著」。
+
+   一分鐘的空白畫面跟當掉長得一模一樣，所以三件事一起給：轉動的圈圈（有在動）、
+   一步一步點亮的階段（走到哪了）、往上跳的秒數（真的有在前進）。
+   秒數是這三個裡最有用的一個 —— 它是唯一不會騙人的：卡住了秒數就停。 */
+const ASK_STAGES = ["連上模型", "上網搜尋", "讀逐字稿", "整理成摘要"];
+const ASK_STAGE_SECONDS = 12;
+
+function askWaiting(what) {
+  const wait = document.createElement("div");
+  wait.className = "ask-wait";
+  wait.innerHTML = `<div class="ask-run"><span class="ask-spin" aria-hidden="true"></span>
+      <span>${esc(what)}<b class="ask-dots"><i>.</i><i>.</i><i>.</i></b></span>
+      <span class="ask-sec">0 秒</span></div>
+    <div class="ask-steps">${ASK_STAGES.map(s =>
+      `<span class="ask-step">${esc(s)}</span>`).join("")}</div>`;
+  $("#askBody").append(wait);
+  $("#askBody").scrollTop = $("#askBody").scrollHeight;
+
+  // 階段是**估**的，不是模型回報的 —— 所以最後一階到了就停在那，不准假裝走完
+  const t0 = Date.now();
+  const steps = [...wait.querySelectorAll(".ask-step")];
+  const tick = () => {
+    const sec = Math.round((Date.now() - t0) / 1000);
+    wait.querySelector(".ask-sec").textContent = `${sec} 秒`;
+    const at = Math.min(Math.floor(sec / ASK_STAGE_SECONDS), steps.length - 1);
+    steps.forEach((s, i) => s.classList.toggle("on", i <= at));
+  };
+  tick();
+  wait.dataset.timer = setInterval(tick, 1000);
+  return wait;
+}
+
+/* 節點被換掉之後 setInterval 還在跑，每秒對著不存在的元素寫字。要自己收。 */
+function askStop(wait) { clearInterval(+wait.dataset.timer); }
+
+async function askPost(question, waiting) {
+  const wait = askWaiting(waiting);
+  askLock(true);
+  try {
+    const r = await fetch("/api/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: ask.symbol, question }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    askKeywords(d.highlights || {});
+    wait.outerHTML = askSayHTML(d);
+    $("#askLeft").textContent = `這段對話還記得 ${d.rounds_left} 輪`;
+  } catch (err) {
+    wait.outerHTML = `<div class="err">✕ ${esc(err.message)}</div>`;
+  } finally {
+    askStop(wait);
+    askLock(false);
+    $("#askBody").scrollTop = $("#askBody").scrollHeight;
+    if (!$("#askInput").disabled) $("#askInput").focus();
+  }
+}
+
+/* 標題列只放「問誰」。「的法說會」是廢話 —— 視窗裡從頭到尾都在講法說會。
+
+   公司名跟報價不是同一個請求回來的。點得夠快的話，開視窗當下 chart.name 還是空的，
+   標題就會永遠停在「RL」——所以名字到了要再寫一次，不能只在開視窗時抄一份。 */
+function askLabel() {
+  if (ask.symbol && ask.symbol === chart.symbol)
+    $("#askSub").textContent = `${chart.symbol}${chart.name ? "　" + chart.name : ""}`;
+}
+
+function openAsk() {
+  if (!chart.symbol) return;
+  modalMin("askModal", false);
+  $("#askModal").classList.remove("hidden");
+  // 換一支股票就是換一段對話。沿用上一家的歷史，模型會拿前一家的財測回答這一家
+  if (ask.symbol === chart.symbol) return;
+  ask.symbol = chart.symbol;
+  askLabel();
+  $("#askBody").innerHTML = "";
+  $("#askInput").value = "";
+  askPost("", "正在上網找最近一場法說會的逐字稿，然後讀完它 —— 大約要一分鐘。");
+}
+function closeAsk() { $("#askModal").classList.add("hidden"); modalMin("askModal", false); }
+
+/* 縮起來只是換一個 class。裡面的內容、捲動位置、正在跑的請求全部原封不動留著。
+   六個彈窗共用這一個函式：縮起來要做的事跟框裡裝的是對話還是 K 線無關。 */
+function modalMin(id, small) {
+  const m = $("#" + id), box = m.querySelector(".modal-box"), btn = m.querySelector(".mini");
+  const from = box.getBoundingClientRect();
+  m.classList.toggle("min", small);
+  dockLayout();
+  btn.textContent = small ? "▣" : "－";
+  btn.setAttribute("aria-label", small ? "放大回來" : "縮到右下角");
+  btn.setAttribute("aria-expanded", String(!small));
+  // 問問放大回來要跳到最底：縮起來的期間可能又多了幾則回答，停在原位就看不到新的
+  if (!small && id === "askModal") $("#askBody").scrollTop = $("#askBody").scrollHeight;
+  modalZoom(m, box, from);
+}
+
+/* 縮起來的彈窗在右下角往上疊。每次都整排重算，不記各自的位置 ——
+   記位置的話，中間有人被放大或關掉，剩下的就會空一格在那裡。 */
+function dockLayout() {
+  let n = 0;
+  for (const m of document.querySelectorAll(".modal")) {
+    const down = m.classList.contains("min") && !m.classList.contains("hidden");
+    m.style.setProperty("--dock", (down ? n++ * 56 : 0) + "px");
+  }
+}
+
+/* Mac 那種「被吸進角落」的縮放感。
+
+   做法叫 FLIP：先量改之前的位置大小（First），改完再量一次（Last），
+   然後用 transform 把它**假裝**成還在原來的地方（Invert），再放手讓它走回真的位置（Play）。
+   為什麼不直接對 width/height 下 transition？因為縮起來的尺寸是 auto ——
+   auto 沒有數值可以補間，瀏覽器只會直接跳過去。而且 transform 走的是合成層，
+   不會每一格都重新排版，六百行的對話框才跑得動。
+
+   中間那一格故意壓扁一點（scaleY 小、scaleX 大），視覺上就是被「吸」進去而不是
+   等比例縮小 —— 真正的 genie 是網格扭曲，CSS 做不到，這是最接近的騙法。 */
+function modalZoom(m, box, from) {
+  const to = box.getBoundingClientRect();
+  const dx = from.left - to.left, dy = from.top - to.top;
+  const sx = from.width / to.width, sy = from.height / to.height;
+  // 沒動就不要演。開視窗時也會經過這裡，那時前後一模一樣
+  if (!to.width || (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < .01)) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const shrink = sx > 1;
+  const mid = shrink
+    ? `translate(${dx * .45}px, ${dy * .7}px) scale(${1 + (sx - 1) * .3}, ${1 + (sy - 1) * .12})`
+    : `translate(${dx * .55}px, ${dy * .3}px) scale(${1 + (sx - 1) * .7}, ${1 + (sy - 1) * .45})`;
+
+  m.classList.add("zoom");
+  box.animate(
+    [{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: .85 },
+     { transform: mid, opacity: .95, offset: .45 },
+     { transform: "none", opacity: 1 }],
+    { duration: 340, easing: "cubic-bezier(.32,.72,.24,1)", fill: "none" },
+  ).finished.finally(() => m.classList.remove("zoom"));
+}
+
+$("#askClose").onclick = closeAsk;
+// 六個彈窗一次接起來。縮起來之後整條標題列都是「放大」的熱區 ——
+// 那顆小方塊太小，要人瞄準才點得到。標題列上的鈕自己有事要做，不能連帶觸發放大
+for (const m of document.querySelectorAll(".modal")) {
+  const id = m.id;
+  m.querySelector(".mini").onclick = () => modalMin(id, !m.classList.contains("min"));
+  m.querySelector(".modal-head").addEventListener("click", e => {
+    if (!e.target.closest("button") && m.classList.contains("min")) modalMin(id, false);
+  });
+}
+$("#askModal").onclick = e => { if (e.target.id === "askModal") closeAsk(); };
+$("#askForm").onsubmit = e => {
+  e.preventDefault();
+  const q = $("#askInput").value.trim();
+  if (!q || ask.busy) return;
+  $("#askBody").insertAdjacentHTML("beforeend", `<div class="ask-turn me"><span>${esc(q)}</span></div>`);
+  $("#askInput").value = "";
+  askPost(q, "查資料中…");
+};
+
 /* ---------- 注意力溫度計：只量體溫，不指方向 ---------- */
 function attentionHTML(d) {
+  const n = d.days.length;
   const max = Math.max(...d.days.map(x => x.count), 1);
   // 刻度取到比最大值大的整數，柱子才不會頂到天花板看不出高度
   const top = Math.ceil(max / 10) * 10 || 10;
+  // 高度已經把「幾則」講完了。再讓顏色也跟著漸層跑，等於同一件事講兩遍，
+  // 十四根各一個色的結果就是很花又比不出來。所以只剩兩種柱子：平常的、爆量的。
   const bars = d.days.map(x => {
     const spike = x.count >= d.spike_at && x.count > 0;
-    return `<i title="${esc(x.date)}　${x.count} 則" style="height:${x.count / top * 100}%;
-      background:${spike ? "var(--warning)" : "var(--series-1)"};opacity:${spike ? 1 : .5}"></i>`;
+    return `<i class="${spike ? "att-spike" : ""}" title="${esc(x.date)}　${x.count} 則"
+      style="height:${(x.count / top * 100).toFixed(1)}%"
+      data-n="${x.count || ""}"></i>`;
   }).join("");
   const peak = d.days.reduce((a, b) => b.count > a.count ? b : a);
-  const hot = d.days.some(x => x.count >= d.spike_at && x.count > 0);
+  const hot = d.days.filter(x => x.count >= d.spike_at && x.count > 0);
   const ticks = [top, top / 2, 0].map(v =>
     `<span style="bottom:${v / top * 100}%">${v}</span>`).join("");
 
   return `<div class="card att">
-    <h2>注意力溫度計 · 最近 14 天每天幾則新聞</h2>
-    <div class="meta">中位數 ${d.median} 則／天　·　最熱 ${esc(peak.date)}（${peak.count} 則）</div>
+    <h2>注意力溫度計 · 最近 ${n} 天每天幾則新聞</h2>
+    <div class="meta">中位數 ${d.median} 則／天　·　最熱 ${esc(peak.date)}（${peak.count} 則）　·
+      爆量門檻 ${d.spike_at} 則${hot.length ? `　·　<b style="color:var(--warning)">爆量 ${hot.length} 天</b>` : ""}</div>
     <div class="att-plot">
       <div class="att-yaxis">${ticks}</div>
       <div class="att-bars">
         <i class="att-grid" style="bottom:100%"></i><i class="att-grid" style="bottom:50%"></i>
+        <i class="att-line" style="bottom:${Math.min(d.median / top * 100, 100)}%"
+          data-lbl="中位數 ${d.median}"></i>
         ${bars}
       </div>
     </div>
@@ -1528,11 +2468,14 @@ function attentionHTML(d) {
       `<span>${i % 2 === 0 ? x.date.slice(5) : ""}</span>`).join("")}</div>
     <details class="explain att-note"><summary>這張圖怎麼看？</summary>
       <div class="explainbody">
-        <p>直條是<strong>每天有幾則新聞</strong>，左邊是刻度。它只量「有多少人在討論」，
-          ${hot ? "黃色是超過中位數 2 倍的日子 —— 去下面的新聞列表找那一天發生什麼。"
-                : "這 14 天沒有任何一天超過中位數的 2 倍，算平靜，所以沒有黃色尖峰。"}</p>
+        <p>直條是<strong>每天有幾則新聞</strong>，數字直接寫在柱子上頭，左邊是刻度。
+          橫的那條虛線是<strong>中位數</strong>，也就是「這支股票平常的音量」——
+          比它高就是比平常吵。它只量「有多少人在討論」，
+          ${hot.length ? `<b style="color:var(--warning)">橘色</b>那 ${hot.length} 根是超過中位數 2 倍的爆量日
+              （${hot.map(x => x.date.slice(5)).join("、")}）—— 去下面的新聞列表找那幾天發生什麼。`
+                : `這 ${n} 天沒有任何一天超過中位數的 2 倍，算平靜，所以沒有橘色的柱子。`}</p>
         <p>⚠️ 這條<strong>只回答「今天有沒有事」，不回答「該買還該賣」</strong> —— 暴漲跟暴跌都會讓新聞變多。</p>
-        <p>固定就是最近 14 天，<strong>不會跟著走勢圖的區間按鈕變</strong>（資料來源只給得到這麼多）。
+        <p>固定就是最近 ${n} 天（跟搜尋的預設天數一樣），<strong>不會跟著走勢圖的區間按鈕變</strong>（資料來源只給得到這麼多）。
           週末本來就少，今天的數字會隨著當天過去持續增加。</p>
       </div></details>
   </div>`;
@@ -1579,9 +2522,7 @@ function evtHTML(e) {
         ? `<div class="chips">${tally(e.articles)}${hidden ? `<span class="chip">▪️ ${hidden} 篇中性已隱藏</span>` : ""}</div>
            <div class="artlist">${worth.map(artHTML).join("")}</div>
            ${worth.length ? "" : `<div class="nohit">這天的 ${e.articles.length} 篇全是中性標題。</div>`}`
-        : e.covered
-          ? `<div class="nohit"><em>⚠ 找不到對應新聞</em><br>這天股價動了 ${Math.abs(e.pct)}%，但當日沒有新聞可解釋。可能是大盤連動，也可能是我們的來源漏了。</div>`
-          : `<div class="nohit" style="color:var(--text-muted)"><em style="color:var(--critical)">⛔ 超出新聞涵蓋範圍</em><br>這天不在新聞來源回傳的期間內，<strong>不代表當天沒有新聞</strong>。Finnhub 免費 tier 通常只回最近約兩週。</div>`}
+        : `<div class="nohit"><em>⚠ 找不到對應新聞</em><br>這天股價動了 ${Math.abs(e.pct)}%，但當日沒有新聞可解釋。可能是大盤連動，也可能是我們的來源漏了。</div>`}
     </div>
   </div>`;
 }
@@ -1658,7 +2599,7 @@ function openHeat() {
   $("#heatBody").appendChild(box);
 }
 
-function closeHeat() { $("#heatModal").classList.add("hidden"); }
+function closeHeat() { $("#heatModal").classList.add("hidden"); modalMin("heatModal", false); }
 
 $("#railToggle").onclick = () => {
   const open = document.body.dataset.rail !== "1";
@@ -1731,7 +2672,7 @@ function openCal() {
   $("#calModal").classList.remove("hidden");
   loadCal();
 }
-function closeCal() { $("#calModal").classList.add("hidden"); }
+function closeCal() { $("#calModal").classList.add("hidden"); modalMin("calModal", false); }
 
 $("#btnCal").onclick = openCal;
 $("#calClose").onclick = closeCal;
@@ -1759,7 +2700,7 @@ function splitHTML(s) {
     </div>${note ? `<div class="caveat" style="margin:-2px 0 4px">${note}</div>` : ""}`;
   };
   const good = "var(--good)", bad = "var(--critical)";
-  return `<div class="valu-split">
+  return `<div class="valu-split lift">
     ${line("公司真的多賺", s.earnings, s.earnings >= 0 ? good : bad,
       `每股盈餘 ${s.eps_from} → ${s.eps_to} 美元`)}
     ${line("市場多付錢", s.multiple, s.multiple >= 0 ? bad : good,
@@ -1782,7 +2723,7 @@ function peSparkHTML(p) {
   const pts = p.spark.map((s, i) =>
     `${(i / (p.spark.length - 1) * 100).toFixed(2)},${peY(s.pe, lo, span).toFixed(2)}`);
   const up = vals[vals.length - 1] >= vals[0];
-  return `<div class="pespark" id="peSpark">
+  return `<div class="pespark lift" id="peSpark">
     <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
       <polyline points="${pts.join(" ")}" fill="none" stroke="${up ? "var(--critical)" : "var(--good)"}" stroke-width="1.2"/>
       <line class="pk-x" x1="0" x2="0" y1="0" y2="20" stroke="var(--text-muted)" stroke-width=".5"/>
@@ -1843,11 +2784,11 @@ function trendHTML(d) {
   return `<div class="valu-now" id="trendNow"><b style="color:${TREND_TONE[n.verdict.code]}">$${n.price}</b>
       <span>軌道中心 <b>$${n.fair}</b>，平常晃動 <b>±$${n.sigma}</b>　·　${n.verdict.text}
         （差 ${n.gap > 0 ? "+" : ""}${n.gap}%）</span></div>
-    <div id="trendChart"></div>
+    <div id="trendChart" class="lift"></div>
     <div class="pk-read" id="trendRead">${trendHint(d.years)}</div>
     <div class="trend-legend">
-      <span><i class="lg-band lg-in"></i>常走的範圍（±1 個晃動幅度）</span>
-      <span><i class="lg-band lg-out"></i>還算正常（±2 個）</span>
+      <span><i class="lg-band lg-in"></i>常走的範圍（±${Math.min(...t.bands)} 個晃動幅度）</span>
+      <span><i class="lg-band lg-out"></i>還算正常（±${Math.max(...t.bands)} 個）</span>
       <span><i class="lg-dash"></i>軌道中心</span>
       <span><i class="lg-mark"></i>財報公布日（灰色細實線，下方有日期）</span>
       <span><i class="lg-today"></i>今天（白色虛線，股價只會畫到這裡）</span>
@@ -1883,12 +2824,13 @@ function trendScale(t, from) {
   // y 軸只看畫面上這一段。整段五年一起算的話，放大之後的線會擠成一條平的
   const vis = P.filter(p => p.d >= d0);
   const segs = S.filter(s => s.to >= d0);
+  const kOut = Math.max(...t.bands);
   const edges = segs.flatMap(s => [d0 > s.from ? d0 : s.from, s.to]
-    .flatMap(d => [segY(s, d) - 2 * s.sigma, segY(s, d) + 2 * s.sigma]));
+    .flatMap(d => [segY(s, d) - kOut * s.sigma, segY(s, d) + kOut * s.sigma]));
   const lo = Math.min(...vis.map(p => p.c), ...edges);
   const hi = Math.max(...vis.map(p => p.c), ...edges);
 
-  return { d0, dN, days, vis, segs, lo, hi, today: t.today,
+  return { d0, dN, days, vis, segs, lo, hi, today: t.today, bands: t.bands,
     X: d => L + dayGap(d0, d) / days * (W - L - R),
     Y: v => T + (hi - v) / (hi - lo || 1) * (H - T - B),
     dateAt: x => clampDay(isoAdd(d0, Math.round((x - L) / (W - L - R) * days)), d0, dN) };
@@ -1933,12 +2875,12 @@ function trendBody(sc) {
   const { W, H, L, R, T, B } = TREND_BOX;
   const g = el("g", { "clip-path": "url(#trendClip)" });
   // 帶子從外層畫到內層，重疊處自然變深 —— 不用算第二種顏色
-  for (const k of [2, 1]) {
+  for (const k of [...sc.bands].sort((a, b) => b - a)) {
     for (const s of sc.segs) {
       g.append(el("path", {
         d: `M${sc.X(s.from)},${sc.Y(s.y0 + k * s.sigma)} L${sc.X(s.to)},${sc.Y(s.y1 + k * s.sigma)}
             L${sc.X(s.to)},${sc.Y(s.y1 - k * s.sigma)} L${sc.X(s.from)},${sc.Y(s.y0 - k * s.sigma)} Z`,
-        fill: "var(--warning)", opacity: k === 2 ? .12 : .16 }));
+        fill: "var(--warning)", opacity: k === Math.min(...sc.bands) ? .16 : .12 }));
     }
   }
   for (const s of sc.segs) {
@@ -1965,7 +2907,8 @@ function trendFuture(g, sc) {
   if (s.to <= sc.today) return;
   const a = sc.today > s.from ? sc.today : s.from;
   // 今天之後那一截沒有股價可以對照，帶子邊緣畫成虛線，免得看起來像已經發生的事
-  for (const k of [-1, 1]) {
+  const kIn = Math.min(...sc.bands);
+  for (const k of [-kIn, kIn]) {
     g.append(el("path", { class: "tr-future",
       d: `M${sc.X(a)},${sc.Y(segY(s, a) + k * s.sigma)} L${sc.X(s.to)},${sc.Y(segY(s, s.to) + k * s.sigma)}`,
       fill: "none", stroke: "var(--warning)", "stroke-width": 1.2, "stroke-dasharray": "3 3" }));
@@ -2067,13 +3010,22 @@ function resetTrend() {
   loadValu(valuYears, "");
 }
 
+/* 本益比落在區間第幾 % → 一段從冷到熱的漸層。跟下面那條軌道用同一條色帶
+   （低＝綠、高＝紅），數字和軌道講的才是同一件事。 */
+function peHeat(pct) {
+  const p = Math.min(100, Math.max(0, pct));
+  const hue = h => (h < 50 ? 145 - h / 50 * 55 : 45 - (h - 50) / 50 * 45).toFixed(0);
+  return `background-image:linear-gradient(100deg,`
+    + `hsl(${hue(Math.max(0, p - 18))} 95% 62%),hsl(${hue(Math.min(100, p + 18))} 100% 52%))`;
+}
+
 function peTrapHTML(t) {
   if (!t) return "";
   return `<div class="pe-trap" id="peTrap">⚠️ <strong>這個百分位不能當成「便宜」。</strong>
     這 ${t.years} 年盈餘漲了 <strong>${t.earnings_x} 倍</strong>，股價只漲 <strong>${t.price_x} 倍</strong>
     —— 本益比是被<strong>分母</strong>壓下去的，不是股價變便宜。
     分母是<strong>過去 12 個月已經賺到的錢</strong>；公司賺錢賺到高峰的那一刻，本益比一定最低。
-    該問的不是「現在第幾 %」，是<strong>這個盈餘撐不撐得住</strong>。</div>`;
+    該問的不是「現在第幾 %」，是<strong>這個盈餘撐不撐得住</strong> —— 看下面第二區。</div>`;
 }
 
 const MARK = { true: ["✅", "var(--good)"], false: ["❌", "var(--critical)"], null: ["➖", "var(--text-muted)"] };
@@ -2088,7 +3040,8 @@ function qualityHTML(rows) {
     return `<div class="qa-row"><span class="qm">${mark}</span>
       <span class="qk">${esc(r.ask)}</span>
       <span class="qv" style="color:${color}">${v}</span>
-      <span class="qt">${esc(r.text)}<br><em class="qb">比的是：${esc(r.basis)}</em></span></div>`;
+      <span class="qt"><span style="color:${color}">${esc(r.text)}</span>
+        <br><em class="qb">比的是：${esc(r.basis)}</em></span></div>`;
   };
   // 結論只看紅燈有幾個。四題全過也不代表該買，只代表「低本益比這件事目前不是陷阱」
   const sum = bad === 0
@@ -2099,15 +3052,19 @@ function qualityHTML(rows) {
          盈餘只要往下一點，本益比自己就會彈回去，股價一毛都不用漲。這種「便宜」最貴。`
       : `<strong style="color:var(--warning)">四題裡有 ${bad} 題亮紅燈、${ok} 題過關</strong> ——
          混合訊號。紅燈那幾題就是接下來每一季財報要盯的地方。`;
-  return `<div class="qa">${rows.map(row).join("")}</div>
+  return `<div class="qa lift">${rows.map(row).join("")}</div>
     <div class="qa-sum">${sum}</div>`;
 }
 
 function fairHTML(f, years, pe) {
-  const cell = (k, sub, x, when) => `<div class="fair-cell">
-    <div class="fk">${esc(k)}</div>
+  // 冷／中／熱是溫度，就用溫度的顏色講：藍 → 琥珀 → 紅。
+  // 「離現在 ±%」維持綠紅，因為那是漲跌空間，跟冷熱是兩個不同的軸，不可以混成一種顏色。
+  const cell = (k, sub, x, when, hue, icon) => `<div class="fair-cell" style="
+      border-left:5px solid hsl(${hue} 90% 55%);
+      background:linear-gradient(100deg, hsl(${hue} 80% 55% / .16), var(--plane) 70%)">
+    <div class="fk" style="color:hsl(${hue} 92% 62%)">${icon} ${esc(k)}</div>
     <div class="fs" style="color:var(--text-muted)">${esc(sub)}（本益比 ${x.pe}）</div>
-    <div class="fv">$${x.price}</div>
+    <div class="fv" style="color:hsl(${hue} 92% 64%)">$${x.price}</div>
     <div class="fs" style="color:${x.gap >= 0 ? "var(--good)" : "var(--critical)"}">
       離現在 ${x.gap > 0 ? "+" : ""}${x.gap}%</div>
     ${when ? `<div class="fs" style="color:var(--text-muted)">上次是 ${esc(when)}</div>` : ""}
@@ -2119,14 +3076,138 @@ function fairHTML(f, years, pe) {
       不是股價高低。<strong>冷＝市場最不捧場</strong>（同樣賺 1 元只肯付 ${f.low.pe} 元），
       <strong>熱＝市場最捧場</strong>（同樣賺 1 元肯付 ${f.high.pe} 元）。
       所以「最冷」那一格是<strong>最悲觀的情境</strong>，不是「合理價」。</div>
-    <div class="fair">${cell("市場最不捧場", "這 " + years + " 年最冷", f.low, pe.low_at)}${
-      cell("市場態度回到中間", "這 " + years + " 年的中位數", f.mid, "")}${
-      cell("市場最捧場", "這 " + years + " 年最熱", f.high, pe.high_at)}</div>
+    <div class="fair lift">${cell("市場最不捧場", "這 " + years + " 年最冷", f.low, pe.low_at, 205, "🧊")}${
+      cell("市場態度回到中間", "這 " + years + " 年的中位數", f.mid, "", 45, "😐")}${
+      cell("市場最捧場", "這 " + years + " 年最熱", f.high, pe.high_at, 8, "🔥")}</div>
     <div class="caveat" style="margin-top:10px">⚠️ 這是<strong>除法，不是預測，更不是目標價</strong>。
       三個數字全部建立在「盈餘不變」上，而盈餘一定會變 ——
-      上面四題就是在看它接下來比較可能往哪邊變。
+      <strong>下面第二區</strong>的四題體檢就是在看它接下來比較可能往哪邊變。
       另外這 ${years} 年的本益比區間是<strong>過去的市場情緒</strong>，
       公司的成長速度換了一檔，市場願意付的倍數本來就不會回到原位。</div>`;
+}
+
+/* 值怎麼印。key 是後端列定義的第三欄 —— 前端不決定哪一列長什麼樣，只負責照著畫。 */
+const FY_FMT = {
+  money: v => "$" + money(v),
+  rate: v => v.toFixed(1) + "%",
+  shares: v => money(v) + "股",
+  eps: v => v.toFixed(2),
+};
+
+/* 變化怎麼印。單位是後端給的，不是這裡猜的 ——
+   「率」用相減寫 pp，金額和數量用相除寫 %。前端自己記一份的話兩邊遲早會對不上。
+   pp 一定要寫成 pp 不能寫成 %：淨利率 7.3% → 4.0% 印成「-45%」會被讀成公司少賺四成半，
+   實際只掉了 3.3 個百分點。 */
+function fyDelta(v, unit) {
+  if (v === null || v === undefined) return `<div class="fy-d fy-none">—</div>`;
+  const color = v > 0 ? "var(--good)" : v < 0 ? "var(--critical)" : "var(--text-muted)";
+  // 一律一位小數。有的印 -2.8% 有的印 +2%，同一欄的小數點對不齊，一整排數字就沒辦法用掃的
+  const sign = v > 0 ? "+" : "";
+  return `<div class="fy-d" style="color:${color}">${sign}${v.toFixed(1)}${
+    unit === "pp" ? "pp" : "%"}</div>`;
+}
+
+/* 財年表格。列＝指標、欄＝財年，所以橫著看是軌跡、直著看是那一年的全貌。
+   最新的財年放最左邊 —— 最該先看的是今年，眼睛第一個落點就該是它。
+   margins 本來就是新的在前，所以這裡不排序，直接照原順序畫。 */
+function fyTableHTML(margins, rows) {
+  const years = margins;
+  const body = rows.map(([key, label, fmt, unit]) => `<tr>
+      <td class="fy-k">${esc(label)}</td>
+      ${years.map(r => {
+        const v = r[key];
+        // 盈餘那一列的顏色就是「那年賺還是虧」，跟舊版整格上色講的是同一件事
+        const tone = key === "net" && v !== null ? (v >= 0 ? "var(--good)" : "var(--critical)") : "";
+        return `<td>
+          <div class="fy-v"${tone ? ` style="color:${tone}"` : ""}>${
+            v === null || v === undefined ? `<span class="fy-none">—</span>` : FY_FMT[fmt](v)}</div>
+          ${fyDelta(r.d[key], unit)}</td>`;
+      }).join("")}
+    </tr>`).join("");
+  return `<div class="fy-wrap lift"><table class="fy">
+      <thead><tr><th class="fy-k">指標</th>${
+        years.map(r => `<th>${esc(r.year)} 財年</th>`).join("")}</tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>
+    <div class="caveat" style="margin-top:8px">每一格上面是那年的值，下面是<strong>跟前一年比</strong>的變化。
+      左邊是最新的財年，越往右越舊。最右邊那年沒有更早的一年可以比，所以是「—」。<br>
+      ⚠️ <strong>毛利率和淨利率用「pp（個百分點）」，不是「%」</strong> ——
+      它們本身就是百分比，再算一次百分比會騙人：淨利率 7.3% 掉到 4.0%，
+      寫成「-45%」聽起來像公司少賺四成半，其實它只掉了 <strong>3.3 個百分點</strong>，
+      公司少賺多少要看「盈餘」那一列。</div>`;
+}
+
+/* 第一區的結論：所以現在到底貴不貴。
+   判斷只看一個數字（本益比落在自己這幾年的第幾 %），而且整段文字都是後端給的 ——
+   前端自己寫一套 pct >= 80 的話，盈餘暴衝造成的假便宜會被印成「🟢 偏便宜」。 */
+function priceEndHTML(v) {
+  if (!v) return "";
+  const color = v.face === "🔴" ? "var(--critical)" : v.face === "🟢" ? "var(--good)"
+    : v.face === "⚠️" ? "var(--warning)" : "var(--text-secondary)";
+  return `<div class="part-end lift"><b style="color:${color}">本區結論：${v.face} ${esc(v.label)}</b>
+    本益比落在自己這 ${v.years} 年的第 <b>${v.pct}%</b>。${esc(v.text)}
+    <div class="part-end-tail">${esc(v.tail)}</div></div>`;
+}
+
+/* 第二區的整區結論。這一區有三個小節，各自的小結只看自己那一塊 ——
+   這裡把「誰撐的」跟「還撐不撐得住」擺在同一句話裡。
+   兩個數字直接印出來，讓人自己看得到差多少：70.8 比 39.7 跟 50.0 比 49.9
+   在文字上都會被寫成「主要是本業」，但只有前者當得起這四個字。 */
+function supportEndHTML(v) {
+  if (!v) return "";
+  const color = v.face === "👍" ? "var(--good)" : v.face === "👎" ? "var(--critical)"
+    : "var(--warning)";
+  const pc = x => `${x > 0 ? "+" : ""}${x.toFixed(1)}%`;
+  // 叫「本區結論」不叫「結論」：它正上方就是切蛋糕那一句「結論」，
+  // 兩個一樣的字連在一起，看的人分不出哪句管哪一塊
+  return `<div class="part-end lift"><b style="color:${color}">本區結論：${v.face} 這個價位主要是${
+    esc(v.by)}撐的</b>
+    （公司真的多賺 <b>${pc(v.earnings)}</b>　vs　市場多付錢 <b>${pc(v.multiple)}</b>）。${esc(v.text)}
+    ${v.note ? `<div class="part-end-tail">${esc(v.note)}</div>` : ""}</div>`;
+}
+
+/* 上面三行講「發生了什麼」，這一行才回答「所以是好是壞」。
+   哪一種情況配哪個表情、配哪句話，是後端從 config 送過來的 ——
+   前端自己判 s.eps.pct > 0 就給 👍 的話，「公司少賺、回購撐住每股盈餘」那種
+   會被誤判成好消息，而那正是最需要看清楚的一種。 */
+function sliceEndHTML(s, conclusions) {
+  const c = (conclusions || {})[s.conclusion];
+  if (!c) return "";
+  const [face, text] = c;
+  const color = face === "👍" ? "var(--good)" : face === "👎" ? "var(--critical)" : "var(--warning)";
+  // 擺在框子右邊不是塞在框子裡：框裡三行是算式，這句是算完的答案，
+  // 塞進去會被當成算式的第四行。箭頭就是「這個框推出來的」
+  return `<div class="slice-end"><span class="se-arrow">➔</span>
+    <span><b style="color:${color}">${face}</b> ${esc(text)}</span></div>`;
+}
+
+/* 每股盈餘為什麼變成這樣：餅多大 ÷ 切幾份。
+   刻意不講「分子分母」—— 這張卡已經用「分母」指本益比的分母（盈餘）了，
+   同一頁出現兩個分母，看的人一定分不清哪個是哪個。 */
+function sliceHTML(s, verdicts, conclusions) {
+  if (!s) return "";
+  const row = (icon, k, sub, x, fmt, tot) => {
+    const color = x.pct > 0 ? "var(--good)" : x.pct < 0 ? "var(--critical)" : "var(--text-muted)";
+    return `<div class="slice-row${tot ? " tot" : ""}">
+      <span class="sk">${icon} ${esc(k)}<span class="sv">　${esc(sub)}</span></span>
+      <span class="sv">${fmt(x.from)} → ${fmt(x.to)}</span>
+      <span class="sp" style="color:${color}">${x.pct > 0 ? "+" : ""}${x.pct.toFixed(1)}%</span>
+    </div>`;
+  };
+  const b = v => "$" + money(v);
+  // 差距講「幾個百分點」而不是「幾分之幾」—— 它就是兩個百分比相減，說得出算式才查得證
+  const gap = s.gap === 0 ? "" :
+    `股數${s.shares.pct > 0 ? "多了" : "少了"} ${Math.abs(s.shares.pct)}%，
+     讓你那一份<strong style="color:${s.gap > 0 ? "var(--good)" : "var(--critical)"}">${
+       s.gap > 0 ? "多漲" : "多掉"}了 ${Math.abs(s.gap)} 個百分點</strong>。`;
+  return `<div class="slice-wrap"><div class="slice lift">
+    <div class="caveat" style="margin:0 0 8px">🍰 <strong>最近這一年，每股盈餘為什麼變成這樣？</strong>
+      （${esc(s.from_year)} → ${esc(s.to_year)} 財年）</div>
+    ${row("🥧", "整塊餅", "公司賺的錢", s.net, b)}
+    ${row("✂️", "切成幾份", "股數", s.shares, v => money(v) + "股")}
+    ${row("🍰", "你那一份", "每股盈餘", s.eps, v => v.toFixed(2), true)}
+    <div class="caveat" style="margin:10px 0 0">${gap}${esc(verdicts[s.verdict] || "")}</div>
+  </div>${sliceEndHTML(s, conclusions)}</div>`;
 }
 
 function valuHTML(d) {
@@ -2146,11 +3227,13 @@ function valuHTML(d) {
       底下所有數字都退回 <strong>${esc(d.to)}</strong> 那天為止，${esc(d.to)} 之後的股價完全沒被用到。
       本益比區間是從那天<strong>往前 ${d.years} 年</strong>。</div>` : ""}
 
+    <div class="valu-part">一、現在貴不貴？</div>
+
     <h3>本益比：${d.asof ? `${esc(d.to)} 當時` : "現在"} ${p.now}，這 ${d.years} 年區間 ${p.low} – ${p.high}</h3>
-    <div class="valu-now"><b>${p.now}</b><span>落在 ${d.years} 年區間的第 <b>${p.pct}%</b>
-      ${p.pct >= 80 ? "比自己平常熱" : p.pct <= 20 ? "比自己平常冷" : "跟自己平常差不多"}</span></div>
+    <div class="valu-now"><b class="pe-big" style="${peHeat(p.pct)}">${p.now}</b><span>落在 ${d.years} 年區間的第 <b>${p.pct}%</b>
+      ${esc(p.verdict.label)}</span></div>
     ${peTrapHTML(p.trap)}
-    ${rangeBar(`本益比 ${d.years} 年區間`, p.low, p.high, p.now)}
+    <div class="pe-slider lift">${rangeBar(`本益比 ${d.years} 年區間`, p.low, p.high, p.now)}</div>
     <div class="caveat" style="margin:0 0 10px">最低 <b>${p.low}</b> 出現在 <b>${esc(p.low_at)}</b>，
       最高 <b>${p.high}</b> 出現在 <b>${esc(p.high_at)}</b>。
       換「回看幾年」區間沒變的話，代表<strong>這兩天都落在比較短的那段期間裡</strong> —— 拉桿沒壞。</div>
@@ -2159,38 +3242,46 @@ function valuHTML(d) {
       滾動一年每股盈餘（四季相加，用<strong>財報真正的公布日</strong>算時間差，不是估一個固定天數）。
       共用到 ${d.eps_points} 個季度盈餘數字。</div>
 
-    <h3>這個盈餘撐不撐得住？（本益比的分母體檢）</h3>
-    <div class="caveat" style="margin:-4px 0 10px">本益比 = 股價 ÷ 盈餘。盈餘是<strong>分母</strong>。
-      分母撐不住，本益比自己就會彈回去 —— 股價一毛都不用漲。四題全是除法，沒有預測。<br>
-      ⏱️ 這四題<strong>永遠看最新的一段，不跟著上面的「回看幾年」動</strong>。
-      那根拉桿管的是「本益比區間有多寬」，這裡問的是「公司現在的體質」，兩件事。<br>
-      比法一律是<strong>跟一年前的同一個位置比（同期比）</strong>，不是跟上一季比 ——
-      多數公司有淡旺季，拿 Q4 比 Q3 量到的是季節，不是體質。每一列下面都寫了實際比的是哪兩段。</div>
-    ${qualityHTML(d.quality)}
-
     <h3>如果盈餘不變，本益比回到常態會是多少錢？</h3>
     ${fairHTML(d.fair, d.years, d.pe)}
+    ${priceEndHTML(d.pe.verdict)}
+
+    <div class="valu-part">二、這個「貴」靠什麼撐著？</div>
 
     <h3>這 ${d.years} 年，股價漲跌是從哪來的？</h3>
     <div class="caveat" style="margin:-4px 0 8px">${span}，跟上面的本益比是同一段時間。</div>
     ${splitHTML(d.split)}
 
-    <h3>公司本身：營收與利潤率（近 ${m.length} 個財年）</h3>
-    <div class="valu-grid">${m.map(r => `<div class="valu-cell">
-      <div class="vy">${esc(r.year)} 財年</div>
-      <div class="vv">${money(r.revenue)}</div>
-      <div class="vs">營收年增 ${r.revenue_growth === undefined ? "—"
-        : `<span style="color:${r.revenue_growth >= 0 ? "var(--good)" : "var(--critical)"}">${
-          r.revenue_growth > 0 ? "+" : ""}${r.revenue_growth}%</span>`}</div>
-      <div class="vs">毛利率 ${r.gross_margin ?? "—"}%</div>
-    </div>`).join("")}</div>
+    <h3>這個盈餘撐不撐得住？（本益比的分母體檢）</h3>
+    <div class="caveat" style="margin:-4px 0 10px">本益比 = 股價 ÷ 盈餘。盈餘是<strong>分母</strong>。
+      分母撐不住，本益比自己就會彈回去 —— 股價一毛都不用漲。四題全是除法，沒有預測。<br>
+      ⏱️ 這四題<strong>永遠看最新的一段，不跟著最上面的「回看幾年」動</strong>。
+      那根拉桿管的是「本益比區間有多寬」，這裡問的是「公司現在的體質」，兩件事。<br>
+      比法一律是<strong>跟一年前的同一個位置比（同期比）</strong>，不是跟上一季比 ——
+      多數公司有淡旺季，拿 Q4 比 Q3 量到的是季節，不是體質。每一列下面都寫了實際比的是哪兩段。</div>
+    ${qualityHTML(d.quality)}
 
+    <h3>公司本身：營收、盈餘、股數與利潤率（近 ${m.length} 個財年）</h3>
+    <div class="caveat" style="margin:-4px 0 10px">營收是<strong>收進來多少錢</strong>，盈餘是
+      <strong>最後真的剩下多少</strong>。營收漲、毛利率也好看，盈餘卻是負的，這種公司到處都有 ——
+      所以這裡把盈餘擺出來，不要只看營收就下結論。<br>
+      <strong>橫著看是這個指標的軌跡，直著看是那一年的全貌。</strong>窄畫面可以左右滑，
+      最左邊那欄會釘住不動。<br>
+      ⚠️ 這一區跟上面的「分母體檢」<strong>看的不是同一段時間</strong>，所以偶爾會講反話，那不是 bug：
+      上面用的是<strong>最新四季相加（滾動一年）</strong>，這裡用的是<strong>已結算的完整財年</strong>，
+      最近這一兩季的轉折還沒進到財年數字裡。要判斷「現在」的體質看上面，要看「長期軌跡」看這裡。</div>
+    ${fyTableHTML(m, d.table_rows)}
+    ${sliceHTML(d.slice, d.slice_verdicts, d.slice_conclusions)}
+    ${supportEndHTML(d.support)}
+
+    <div class="valu-part">三、股價圖</div>
     ${trendHTML(d)}
 
     <div class="caveat" style="margin-top:22px">⚠️ <strong>「貴」不是賣出訊號</strong> —— 好公司可以貴十年，
       用「貴」當訊號賣掉微軟的人錯過了十倍。這張卡只回答「現在是不是比自己平常更熱」，
       用來決定<strong>這次買多少</strong>，不是「買不買」。<br>
-      盈餘用 Finnhub 的季度數字四季相加（滾動一年），營收與毛利率來自 Yahoo 的年度損益表。</div>`;
+      滾動一年盈餘用 Finnhub 的季度數字四季相加，營收／年度盈餘／毛利率／淨利率／<strong>股數</strong>
+      來自 Yahoo 的年度損益表（股數取<strong>稀釋後</strong>的平均股數）。</div>`;
 }
 
 let valuYears = 5;
@@ -2225,7 +3316,7 @@ function loadValu(years, end = valuEnd) {
         <div class="caveat">最常見的原因是這家公司在虧損 —— 每股盈餘是負的，本益比就沒有意義。</div>`;
     });
 }
-function closeValu() { $("#valuModal").classList.add("hidden"); }
+function closeValu() { $("#valuModal").classList.add("hidden"); modalMin("valuModal", false); }
 
 /* ---------- 恐慌指數 vs 股價：兩條線、兩個刻度 ---------- */
 const VIX_LEVELS = [
@@ -2234,11 +3325,14 @@ const VIX_LEVELS = [
   [0, "😌 平靜", "var(--good)"],
 ];
 
+// 整段話的結論全靠這一個數字，讓它自己跳出來
+const corrTag = c => `<b class="corr">相關係數 ${c}</b>`;
+
 function vixVerdict(c) {
-  if (c <= -0.5) return `恐慌指數往上的那幾天，這支<strong>幾乎都在跌</strong>（相關係數 ${c}）—— 它跟著整個市場的情緒走。`;
-  if (c <= -0.2) return `恐慌指數往上時，這支<strong>偏向下跌</strong>，但沒有那麼一致（相關係數 ${c}）。`;
-  if (c < 0.2) return `這支跟恐慌指數<strong>幾乎沒關係</strong>（相關係數 ${c}）—— 它漲跌的原因多半是自己的事。`;
-  return `少見：恐慌指數往上時這支反而<strong>偏向上漲</strong>（相關係數 ${c}）。避險性質的股票才會這樣。`;
+  if (c <= -0.5) return `恐慌指數往上的那幾天，這支<strong>幾乎都在跌</strong>（${corrTag(c)}）—— 它跟著整個市場的情緒走。`;
+  if (c <= -0.2) return `恐慌指數往上時，這支<strong>偏向下跌</strong>，但沒有那麼一致（${corrTag(c)}）。`;
+  if (c < 0.2) return `這支跟恐慌指數<strong>幾乎沒關係</strong>（${corrTag(c)}）—— 它漲跌的原因多半是自己的事。`;
+  return `少見：恐慌指數往上時這支反而<strong>偏向上漲</strong>（${corrTag(c)}）。避險性質的股票才會這樣。`;
 }
 
 function vixHTML(d) {
@@ -2273,7 +3367,7 @@ function vixHTML(d) {
           <li><strong>20–30</strong>：緊張，開始有人花錢避險</li>
           <li><strong>30 以上</strong>：恐慌，通常伴隨全市場大跌</li>
         </ul>
-        <p><strong>相關係數</strong>是「兩邊每天的漲跌方向有多同步」，範圍 -1 到 +1。
+        <p><b class="corr">相關係數</b>是「兩邊每天的漲跌方向有多同步」，範圍 -1 到 +1。
           -1 是完全反向，0 是毫無關係。這段期間用了 ${d.days} 個交易日算出來。</p>
         <p>⚠️ 相關不等於因果，而且<strong>這是在看過去</strong>。VIX 現在低不代表接下來不會有事 ——
           它反映的是市場「此刻的想法」，而市場經常想錯。</p>
@@ -2355,11 +3449,17 @@ function drawVix(d) {
     const i = Math.max(0, Math.min(pts.length - 1,
       Math.round(((ev.clientX - b.left) / b.width * W - L) / ((W - L - R) / (pts.length - 1)))));
     const p = pts[i];
+    // 股價數字自己就是漲跌 —— 白色等於每次都要回頭看線才知道方向。
+    // 比的是「跟這段區間的起點比」，跟上面那個大的 ±% 是同一個基準，兩邊不會打架。
+    const move = p.close - pts[0].close;
+    const tone = move >= 0 ? "var(--good)" : "var(--critical)";
     cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
-    pdot.setAttribute("cx", X(i)); pdot.setAttribute("cy", price.y(p.close)); pdot.setAttribute("opacity", 1);
+    pdot.setAttribute("cx", X(i)); pdot.setAttribute("cy", price.y(p.close));
+    pdot.setAttribute("fill", tone); pdot.setAttribute("opacity", 1);
     vdot.setAttribute("cx", X(i)); vdot.setAttribute("cy", fear.y(p.vix)); vdot.setAttribute("opacity", 1);
     tip.innerHTML = `<div class="th">${esc(tipLabel(p.t, d.intraday))}</div>
-      <div class="tr2">${esc(d.symbol)} 股價 $${p.close.toFixed(2)}</div>
+      <div class="tr2" style="color:${tone}">${esc(d.symbol)} 股價 $${p.close.toFixed(2)}
+        <small>${move >= 0 ? "▲ +" : "▼ "}${(move / pts[0].close * 100).toFixed(2)}%</small></div>
       <div class="tr2" style="color:var(--warning)">VIX 恐慌指數 ${p.vix.toFixed(2)}</div>`;
     tip.style.opacity = 1;
     tip.style.left = Math.min(ev.clientX + 14, innerWidth - 280) + "px";
@@ -2400,11 +3500,13 @@ function openVix() {
   $("#vixModal").classList.remove("hidden");
   loadVix(vixRange);
 }
-function closeVix() { $("#vixModal").classList.add("hidden"); $("#tip").style.opacity = 0; }
+function closeVix() { $("#vixModal").classList.add("hidden"); modalMin("vixModal", false); $("#tip").style.opacity = 0; }
 
 $("#valuClose").onclick = closeValu;
 $("#valuModal").onclick = e => { if (e.target.id === "valuModal") closeValu(); };
-addEventListener("keydown", e => { if (e.key === "Escape") { closeHeat(); closeCal(); closeValu(); closeVix(); closeRot(); } });
+addEventListener("keydown", e => { if (e.key === "Escape") { closeHeat(); closeCal(); closeValu(); closeVix(); closeRot(); closeAsk(); } });
+// 🙋‍♂️ 是每次重畫報價卡就重生的節點，不能在載入時綁一次就算了
+document.addEventListener("click", e => { if (e.target.closest("#btnAsk")) openAsk(); });
 
 /* ---------- 走勢圖：自己的時間區間，跟新聞天數無關 ---------- */
 const chart = { symbol: null, name: "", logo: "", sector: "", basics: null, range: "", data: null, ranges: [] };
@@ -2468,8 +3570,11 @@ function renderQuote() {
     <div class="idline">
       <span class="sym">${esc(chart.symbol)}</span>
       ${chart.name ? `<span class="co">${esc(chart.name)}</span>` : ""}
-      ${chart.logo ? `<span class="logobox"><img src="${esc(chart.logo)}" alt=""
-        onerror="this.parentNode.remove()"></span>` : ""}
+      <button type="button" class="logobox" id="btnAsk"
+        title="問問這家公司：法說會上高層說了什麼、財測有沒有變"
+        aria-label="問這家公司的法說會">${chart.logo
+          ? `<img src="${esc(chart.logo)}" alt="" onerror="this.replaceWith('🙋‍♂️')">`
+          : "🙋‍♂️"}</button>
       ${bars ? `<div class="hilo">${bars}</div>` : ""}</div>
     <div class="last">$${d.last.toFixed(2)}
       <span class="delta" style="color:${c}">${up ? "▲ +" : "▼ "}${d.change.toFixed(2)} (${up ? "+" : ""}${d.pct}%)</span>

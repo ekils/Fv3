@@ -65,15 +65,15 @@ def test_unmatched_articles_split_into_buckets():
     assert [a["source"] for a in other["routine"]] == ["PR"]
 
 
-def test_days_before_news_coverage_are_flagged_not_reported_as_no_news():
-    """新聞來源靜默截斷時，早於涵蓋範圍的異動日必須標成『沒資料』而不是『沒新聞』。"""
+def test_a_quiet_day_is_never_relabelled_as_outside_the_news_window():
+    """舊版拿「最早那則新聞是哪天」當涵蓋範圍起點，於是區間頭幾天只要剛好沒新聞，
+    就會被誣賴成『超出新聞涵蓋範圍』。價格和新聞本來就是同一段區間抓的 ——
+    這種日子就是「那天沒新聞」，沒有第二種解釋，也不該有第二種標籤。"""
     bars = [{"date": "2026-09-01", "close": 100.0}, {"date": "2026-09-02", "close": 110.0}] + BARS
     r = build_report("ACME", {"name": "Acme", "industry": "X"}, FUNDAMENTALS, BENCH, bars, ARTICLES)
-    assert r["news_coverage"] == {"from": "2026-09-15", "to": "2026-09-16"}
+    assert "news_coverage" not in r
     early = next(e for e in r["events"] if e["date"] == "2026-09-02")
-    assert early["covered"] is False and early["articles"] == []
-    late = next(e for e in r["events"] if e["date"] == "2026-09-17")
-    assert late["covered"] is True and late["articles"] == []
+    assert early["articles"] == [] and "covered" not in early
 
 
 def test_every_article_carries_a_sentiment():
