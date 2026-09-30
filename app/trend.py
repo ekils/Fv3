@@ -11,10 +11,12 @@ from statistics import median, stdev
 
 from .config import (
     TREND_AFTER_DAYS,
+    TREND_BAND_KS,
     TREND_BEFORE_DAYS,
     TREND_EPS_WEIGHT,
     TREND_NEXT_DAYS,
     TREND_SIGMA_QUARTERS,
+    TREND_VERDICT_K,
 )
 
 
@@ -114,10 +116,10 @@ def _segment(closes: list[dict], known: list[tuple[str, float]], i: int,
 
 
 def _verdict(price: float, fair: float, sigma: float) -> dict:
-    gap = price - fair
-    if gap < -sigma:
+    gap, edge = price - fair, TREND_VERDICT_K * sigma
+    if gap < -edge:
         return {"code": "cheap", "text": "跌破軌道下緣 —— 比這支自己平常的位置低"}
-    if gap > sigma:
+    if gap > edge:
         return {"code": "rich", "text": "衝出軌道上緣 —— 比這支自己平常的位置高"}
     return {"code": "fair", "text": "在軌道內 —— 就是這支平常該在的位置"}
 
@@ -162,6 +164,9 @@ def build_trend(fin: dict, known: list[tuple[str, float]], years: int) -> dict:
             "verdict": _verdict(price, fair, last["sigma"]),
         },
         "eps_weight": TREND_EPS_WEIGHT,
+        # 帶子畫幾層、判斷線在哪，都由後端說了算 —— 前端自己寫數字就會兩邊對不起來
+        "bands": list(TREND_BAND_KS),
+        "verdict_k": TREND_VERDICT_K,
     }
 
 

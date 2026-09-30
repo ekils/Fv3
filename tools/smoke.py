@@ -19,7 +19,8 @@ SHOTS = ROOT / "shots"
 load_dotenv(ROOT / ".env")
 
 sys.path.insert(0, str(ROOT))
-from app.config import RISK_RATIOS, SECTOR_ETF  # noqa: E402
+from app.config import (ASK_BAD, ASK_BRIEF_SECTIONS, ASK_GOOD,  # noqa: E402
+                        ASK_WATCH, RISK_RATIOS, SECTOR_ETF)
 
 
 def serve(port: int):
@@ -208,18 +209,50 @@ def run(symbol: str, port: int) -> bool:
         basics_ok = opened["open"] and opened["slider"] == 0
         print(f"  {'✅' if basics_ok else '❌'} 基本資料卡預設展開、沒有新聞天數拉桿 {opened}")
         results.append(basics_ok)
-        page.wait_for_selector(".macro .mrow", timeout=30_000)
-        results.append(check(page, "FRED 總經指標", ".macro .mrow"))
-        results.append(check(page, "指標走勢圖", ".macro svg.spark polyline"))
-        for t in page.locator(".macro .mitem").all_inner_texts():
+        page.wait_for_selector(".mdeck .mcard", timeout=30_000)
+        results.append(check(page, "FRED 總經指標圖卡", ".mdeck .mcard"))
+        results.append(check(page, "指標走勢圖", ".mdeck svg.spark polyline"))
+        # 一次只給一張卡，所以要真的按箭頭翻過每一頁，每一頁都得有走勢圖和一句好壞判斷
+        n_cards = page.locator("#mDots .mdot").count()
+        seen = page.locator(".mcard .mname").all_inner_texts()
+        whys = page.locator(".mcard .mwhy").all_inner_texts()
+        for t in page.locator(".mcard").all_inner_texts():
             print("     ", t.replace("\n", "  "))
         # 每個指標都要有一句「對這家公司好還是壞」，少一句就是方向表漏設定了
-        whys = page.locator(".macro .mwhy").all_inner_texts()
-        n_rows = page.locator(".macro .mrow").count()
-        told = len(whys) == n_rows and all(
-            w.strip()[0] in "✅❌➖" and "：" in w or "沒動" in w for w in whys)
-        print(f"  {'✅' if told else '❌'} 每個總經指標都說明了正向／負面（{len(whys)}/{n_rows}）")
+        told = (n_cards > 1 and len(seen) == n_cards and len(set(seen)) == n_cards
+                and all(w.strip()[0] in "✅❌➖" and ("：" in w or "沒動" in w) for w in whys))
+        print(f"  {'✅' if told else '❌'} {n_cards} 張圖卡、各自說明了正向／負面 {seen}")
         results.append(told)
+
+        # 箭頭到底就要消失，而且不准繞回第一張。整條要真的滑動，不是瞬間換內容
+        def arrows():
+            return page.evaluate("""() => {
+                const v = b => getComputedStyle(b).visibility === 'visible';
+                return { prev: v(document.querySelector('#mPrev')),
+                         next: v(document.querySelector('#mNext')),
+                         x: document.querySelector('#mTrack').style.transform,
+                         eased: getComputedStyle(document.querySelector('#mTrack')).transitionDuration }; }""")
+        first = arrows()
+        for _ in range(n_cards + 2):          # 多按兩下，會繞的話就會被抓到
+            page.click("#mNext") if arrows()["next"] else None
+            page.wait_for_timeout(120)
+        last = arrows()
+        page.wait_for_timeout(400)
+        ends = (not first["prev"] and first["next"] and first["x"].count("0%") >= 1
+                and last["prev"] and not last["next"]
+                and last["x"] == f"translateX(-{(n_cards - 1) * 100}%)"
+                and first["eased"] not in ("0s", "0"))
+        print(f"  {'✅' if ends else '❌'} 翻到底箭頭就消失、不會繞回去，且有滑動動畫 "
+              f"{first} → {last}")
+        results.append(ends)
+        page.click("#mDots .mdot")            # 回到第一張，別影響後面的截圖
+        page.wait_for_timeout(400)
+
+        title_white = page.evaluate(
+            "() => getComputedStyle(document.querySelector('.mcard .mname')).color")
+        white = title_white in ("rgb(255, 255, 255)", "rgb(245, 245, 245)", "rgb(240, 240, 240)")
+        print(f"  {'✅' if white else '❌'} 圖卡標題是白色 {title_white}")
+        results.append(white)
         results.append(check(page, "股價圖", "#chart svg"))
         results.append(check(page, "高低區間 bar", ".hilo .rbar .rdot"))
         for t in page.locator(".hilo .rbar").all_inner_texts():
@@ -233,15 +266,24 @@ def run(symbol: str, port: int) -> bool:
         print("      圓點顏色:", [b["dot"] for b in bars])
         results.append(fit)
 
-        page.wait_for_selector(".att-bars i:not(.att-grid)", timeout=40_000)
-        results.append(check(page, "注意力溫度計", ".att-bars i:not(.att-grid)"))
-        att = page.evaluate("""() => {
-            const b = [...document.querySelectorAll('.att-bars i:not(.att-grid)')];
-            return { n: b.length, spikes: b.filter(x => x.style.opacity === '1').length,
-                     h: b.map(x => +getComputedStyle(x).height.replace('px','')).filter(v => v > 0).length }; }""")
-        ok = att["n"] > 0 and att["h"] == att["n"]
-        print(f"  {'✅' if ok else '❌'} 溫度計 {att['n']} 根柱子全部有高度，尖峰 {att['spikes']} 根")
+        bar_sel = ".att-bars i:not(.att-grid):not(.att-line)"
+        page.wait_for_selector(bar_sel, timeout=40_000)
+        results.append(check(page, "注意力溫度計", bar_sel))
+        att = page.evaluate("""(sel) => {
+            const b = [...document.querySelectorAll(sel)];
+            return { n: b.length, spikes: b.filter(x => x.classList.contains('att-spike')).length,
+                     labelled: b.filter(x => x.dataset.n !== undefined).length,
+                     h: b.map(x => +getComputedStyle(x).height.replace('px','')).filter(v => v > 0).length }; }""",
+            bar_sel)
+        # 柱子根數必須跟標題講的天數一樣，不然畫面在說謊
+        said = int(re.search(r"最近 (\d+) 天", page.locator(".att h2").inner_text()).group(1))
+        ok = att["n"] == said and att["h"] == att["n"] and att["labelled"] == att["n"]
+        print(f"  {'✅' if ok else '❌'} 溫度計 {att['n']} 根柱子（標題說 {said} 天）"
+              f"全部有高度且標了數字，爆量 {att['spikes']} 根")
         results.append(ok)
+        has_median = page.locator(".att-bars .att-line").count() == 1
+        print(f"  {'✅' if has_median else '❌'} 有中位數那條虛線")
+        results.append(has_median)
         # 縱軸：沒有刻度就看不出「幾則」
         ticks = page.locator(".att-yaxis span").all_inner_texts()
         has_axis = len(ticks) == 3 and ticks[-1] == "0" and int(ticks[0]) > 0
@@ -272,6 +314,223 @@ def run(symbol: str, port: int) -> bool:
         print(f"  {'✅' if folded else '❌'} 注意力說明預設是收合的")
         print(f"  {'✅' if clean else '❌'} 說明裡沒有技術細節")
         results += [folded, clean]
+
+        print("\n問法說會（🙋‍♂️）：")
+        # 按鈕**就是** logo 本身。旁邊又長回一顆獨立的 emoji 鈕就是改壞了
+        where = page.evaluate("""() => {
+            const b = document.querySelector('#btnAsk');
+            if (!b) return null;
+            return { tag: b.tagName, isLogo: b.classList.contains('logobox'),
+                     inIdline: !!b.closest('.idline'),
+                     face: b.querySelector('img') ? 'logo' : b.textContent.trim(),
+                     extra: document.querySelectorAll('.askbtn').length }; }""")
+        placed = (bool(where) and where["tag"] == "BUTTON" and where["isLogo"]
+                  and where["inIdline"] and where["extra"] == 0
+                  and (where["face"] == "logo" or "\U0001f64b" in where["face"]))
+        print(f"  {'✅' if placed else '❌'} 🙋\u200d♂️ 按鈕就是 logo 本身、沒有多一顆鈕 {where}")
+        results.append(placed)
+
+        page.click("#btnAsk")
+        # 標題就叫「問問」，後面只接公司 —— 不再是「問法說會 … 的法說會」講兩次
+        name = page.evaluate("""() => ({
+            title: document.querySelector('#askTitle').innerText.trim(),
+            sub: document.querySelector('#askSub').innerText.trim() })""")
+        # 公司名跟報價是兩個請求。開得夠快的話 chart.name 還沒到，
+        # 標題會停在光禿禿一個代號 —— 所以這裡要求代號**和**公司名都在
+        titled = (name["title"] == "🙋‍♂️問問" and name["sub"].startswith(symbol)
+                  and len(name["sub"]) > len(symbol) + 1
+                  and "法說會" not in name["sub"])
+        print(f"  {'✅' if titled else '❌'} 視窗名稱是「問問 + 公司」 {name}")
+        results.append(titled)
+
+        # 一分鐘的空白畫面跟當掉長得一模一樣。轉圈圈要真的在轉、秒數要真的在跳
+        page.wait_for_selector("#askBody .ask-wait .ask-spin", timeout=10_000)
+        spinning = page.evaluate(
+            """() => getComputedStyle(document.querySelector('.ask-spin')).animationName""")
+        page.wait_for_timeout(2500)
+        sec = page.locator(".ask-sec").inner_text()
+        alive = spinning == "ask-turn" and sec not in ("0 秒", "")
+        print(f"  {'✅' if alive else '❌'} 等待動畫在轉、秒數在跳 {spinning} / {sec}")
+        results.append(alive)
+        # 階段要一步一步點亮，不是一開始就全亮（全亮＝那排字沒在講任何事）
+        lit = page.locator(".ask-step.on").count()
+        staged = 0 < lit < page.locator(".ask-step").count()
+        print(f"  {'✅' if staged else '❌'} 階段一步一步點亮 {lit}/{page.locator('.ask-step').count()}")
+        results.append(staged)
+
+        # 上網找逐字稿、讀完、寫成八節 —— 跑一分半是常態，不是卡住
+        page.wait_for_selector("#askBody .ask-say, #askBody .err", timeout=240_000)
+        # 等待動畫收掉了沒。留著的話那顆 setInterval 會每秒對著看不見的節點寫字
+        gone = page.locator("#askBody .ask-wait").count() == 0
+        print(f"  {'✅' if gone else '❌'} 答案出來後等待動畫收掉")
+        results.append(gone)
+        if page.locator("#askBody .err").count():
+            print(f"  ❌ 摘要失敗：{page.locator('#askBody .err').inner_text()}")
+            results.append(False)
+        else:
+            # 設定裡承諾幾節，畫面上就要有幾節。少一節是靜默漏掉，不是模型「這場沒提到」
+            heads = page.evaluate(
+                "() => [...document.querySelectorAll('#askBody .ask-say h4')].map(e => e.innerText)")
+            want = [t for t, _ in ASK_BRIEF_SECTIONS]
+            whole = all(any(w in h for h in heads) for w in want)
+            print(f"  {'✅' if whole else '❌'} 摘要 {len(want)} 節都寫了 {heads}")
+            results.append(whole)
+            # 沒有來源就是憑記憶答的。使用者明講不要那樣
+            src = page.locator("#askBody .ask-src").first.inner_text()
+            grounded = "查了" in src and page.locator("#askBody .ask-src a").count() > 0
+            print(f"  {'✅' if grounded else '❌'} 真的上網查過並附出處　{src[:80]}")
+            results.append(grounded)
+
+            # 關鍵字上色。一個都沒標＝清單沒送到前端，或正規表示式組壞了
+            keys = page.evaluate(
+                """() => [...document.querySelectorAll('#askBody .ask-say .ask-key')]
+                     .map(e => [e.innerText, e.className.replace('ask-key ', ''),
+                                getComputedStyle(e).color])""")
+            words = [k[0] for k in keys]
+            tones = {k[1] for k in keys}
+            # 有標，但不准標成聖誕樹。同一個詞只標第一次，所以標出來的必定不重複
+            marked = (3 <= len(keys) <= 20 and len(words) == len(set(words))
+                      and tones <= {"good", "bad", "watch"} and "" not in tones)
+            print(f"  {'✅' if marked else '❌'} 關鍵字上色 {len(keys)} 個、無重複 {sorted(tones)}")
+            for w, tone, col in keys:
+                print(f"       {tone:<5} {w}　{col}")
+            results.append(marked)
+            # 每個詞都要有顏色，而且顏色要跟後端分的組對得上 —— 綠紅標反了比不標還糟
+            want = {"good": ASK_GOOD, "bad": ASK_BAD, "watch": ASK_WATCH}
+            wrong = [(w, t) for w, t, _ in keys if w not in want.get(t, ())]
+            print(f"  {'✅' if not wrong else '❌'} 顏色跟後端分組一致 {wrong or ''}")
+            results.append(not wrong)
+            # 三種顏色要真的是三個不同的 rgb，不是三個 class 套到同一個色
+            hues = {c for _, _, c in keys}
+            distinct = len(hues) == len(tones) and all(c.startswith("rgb") for c in hues)
+            print(f"  {'✅' if distinct else '❌'} 好綠壞紅中性黃是三個不同的色 {sorted(hues)}")
+            results.append(distinct)
+            # 小標本來就是黃色粗體，再疊一層顏色是替已經很大聲的東西再喊一次
+            clean = page.evaluate(
+                "() => !document.querySelector('#askBody .ask-say h4 .ask-key')")
+            print(f"  {'✅' if clean else '❌'} 小標沒有被上色")
+            results.append(clean)
+            # 上色不准標進網址裡。連結被塞一個 <mark> 進去就當場爛掉
+            intact = page.evaluate(
+                """() => [...document.querySelectorAll('#askBody .ask-say a')]
+                     .every(a => a.getAttribute('href').startsWith('http'))""")
+            print(f"  {'✅' if intact else '❌'} 上色沒有把連結網址弄壞")
+            results.append(intact)
+
+            # 縮小：縮起來之後後面的東西要點得到，對話內容不准被重建
+            before = page.evaluate("() => document.querySelector('#askBody').innerHTML.length")
+            # 標題列要跟後面的背景明顯不同色。同色的話縮成小橫幅就融進畫面裡了
+            tone = page.evaluate("""() => {
+                const h = getComputedStyle(document.querySelector('#askModal .modal-head'));
+                const rgb = h.backgroundColor.match(/[\\d.]+/g).map(Number);
+                return { bg: h.backgroundColor, blur: h.backdropFilter,
+                         blue: rgb[2] > rgb[0] + 20 && rgb[2] > rgb[1] + 20,
+                         see: rgb.length === 4 && rgb[3] < 1 }; }""")
+            headed = tone["blue"] and tone["see"] and "blur" in tone["blur"]
+            print(f"  {'✅' if headed else '❌'} 標題列是半透明暗藍、不是黑的 {tone}")
+            results.append(headed)
+
+            page.click("#askModal .mini")
+            # 縮放是真的有動畫，不是瞬間跳過去
+            genie = page.evaluate(
+                "() => document.querySelector('#askModal .modal-box').getAnimations().length > 0")
+            print(f"  {'✅' if genie else '❌'} 縮起來有縮放動畫（不是瞬間跳過去）")
+            results.append(genie)
+            page.wait_for_timeout(500)   # 量尺寸要等動畫跑完，不然量到中途那一格
+            small = page.evaluate("""() => {
+                const m = document.querySelector('#askModal');
+                const box = m.querySelector('.modal-box').getBoundingClientRect();
+                return { min: m.classList.contains('min'),
+                         through: getComputedStyle(m).pointerEvents === 'none',
+                         bodyHidden: getComputedStyle(
+                             document.querySelector('#askBody')).display === 'none',
+                         corner: box.right > innerWidth - 40 && box.bottom > innerHeight - 40,
+                         short: box.height < 120,
+                         kept: document.querySelector('#askBody').innerHTML.length }; }""")
+            shrunk = (small["min"] and small["through"] and small["bodyHidden"]
+                      and small["corner"] and small["short"] and small["kept"] == before)
+            print(f"  {'✅' if shrunk else '❌'} 縮到右下角、點擊穿得過去、內容沒被重建 {small}")
+            results.append(shrunk)
+            # 縮起來的時候 sidebar 真的按得到 —— 這才是使用者要縮小的理由
+            page.click("#btnRot")
+            reachable = page.locator("#rotModal:not(.hidden)").count() == 1
+            print(f"  {'✅' if reachable else '❌'} 縮起來後 sidebar 的 RRG 按得到")
+            results.append(reachable)
+            page.click("#rotClose")
+            # 點標題列放大回來，對話還在原地
+            page.click("#askModal .modal-head h2")
+            page.wait_for_timeout(500)
+            back = page.evaluate("""() => {
+                const m = document.querySelector('#askModal');
+                const box = m.querySelector('.modal-box');
+                return { min: m.classList.contains('min'),
+                         // 動畫收尾沒收乾淨的話，方塊會卡在最後一格的 transform 上
+                         stuck: getComputedStyle(box).transform,
+                         zoom: m.classList.contains('zoom'),
+                         kept: document.querySelector('#askBody').innerHTML.length }; }""")
+            restored = (not back["min"] and back["kept"] == before
+                        and back["stuck"] == "none" and not back["zoom"])
+            print(f"  {'✅' if restored else '❌'} 放大回來、沒卡在動畫最後一格、對話原封不動 {back}")
+            results.append(restored)
+
+            # 縮小不是問問專屬的，六個彈窗都該有那顆鈕
+            mins = page.evaluate("""() => [...document.querySelectorAll('.modal')]
+                .map(m => ({ id: m.id, has: !!m.querySelector('.mini') }))""")
+            all_min = bool(mins) and all(m["has"] for m in mins)
+            print(f"  {'✅' if all_min else '❌'} 每個彈窗都有縮小鈕 "
+                  f"{[m['id'] for m in mins if not m['has']] or len(mins)}")
+            results.append(all_min)
+
+            # 縮小鈕要緊貼關閉鈕。.modal-x 自己帶 margin-left:auto，
+            # 沒壓掉的話兩顆會各分一份剩餘空間，中間被撐開一大段
+            # 五個彈窗這時是關著的，量 getBoundingClientRect 全部是 0，等於沒驗到 ——
+            # 所以直接讀算完的 margin-left，這條就算彈窗沒開也問得出答案
+            gaps = page.evaluate("""() => [...document.querySelectorAll('.modal')].map(m => {
+                const [, b] = m.querySelectorAll('.modal-head .modal-x');
+                return { id: m.id, ml: getComputedStyle(b).marginLeft }; })""")
+            snug = bool(gaps) and all(g["ml"] != "auto" for g in gaps)
+            print(f"  {'✅' if snug else '❌'} 縮小鈕緊貼關閉鈕 "
+                  f"{[g for g in gaps if g['ml'] == 'auto'] or gaps[0]['ml']}")
+            results.append(snug)
+
+            # 兩個一起縮：要往上疊，不能疊在同一個位置變成只看得到一個
+            page.click("#askModal .mini")
+            page.click("#btnRot")
+            page.wait_for_selector("#rotModal:not(.hidden)", timeout=30_000)
+            page.click("#rotModal .mini")
+            page.wait_for_timeout(500)
+            dock = page.evaluate("""() => {
+                const r = id => document.querySelector('#' + id + ' .modal-box')
+                    .getBoundingClientRect();
+                const a = r('askModal'), b = r('rotModal');
+                return { gap: +(Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)).toFixed(1),
+                         both: a.height < 120 && b.height < 120 }; }""")
+            stacked = dock["both"] and dock["gap"] <= 0
+            print(f"  {'✅' if stacked else '❌'} 兩個一起縮會往上疊、不會重疊 {dock}")
+            results.append(stacked)
+            page.click("#rotModal .modal-head h2")
+            page.click("#rotClose")
+            page.click("#askModal .modal-head h2")
+            page.wait_for_timeout(400)
+
+        # 追問：問一句離題的，必須被擋回來，而且要記得剛剛那一輪
+        page.fill("#askInput", "幫我寫一首關於貓的詩")
+        page.click("#askSend")
+        page.wait_for_selector("#askBody .ask-turn.me", timeout=10_000)
+        locked = page.evaluate("() => document.querySelector('#askInput').disabled")
+        print(f"  {'✅' if locked else '❌'} 送出後輸入框鎖住，不會連按送出兩次")
+        results.append(locked)
+        page.wait_for_function(
+            "() => !document.querySelector('#askInput').disabled", timeout=240_000)
+        last = page.locator("#askBody .ask-say").last.inner_text()
+        refused = "超出這張卡的範圍" in last
+        print(f"  {'✅' if refused else '❌'} 離題的問題被擋回來　{last[:60]}")
+        results.append(refused)
+        left = page.locator("#askLeft").inner_text()
+        counted = "9 輪" in left
+        print(f"  {'✅' if counted else '❌'} 記憶輪數有倒數　{left}")
+        results.append(counted)
+        page.click("#askClose")
 
         print("\n估值彈窗：")
         page.wait_for_selector("#compare .cmp-head .valu-btn", timeout=60_000)
@@ -313,7 +572,12 @@ def run(symbol: str, port: int) -> bool:
             qa_rows = lambda: page.evaluate(
                 "() => [...document.querySelectorAll('#valuBody .qa-row')]"
                 ".map(r => r.textContent.replace(/\\s+/g, ' ').trim())")
-            qa5 = qa_rows()
+            # 財年表格和切蛋糕綁的是「財年」，跟「回看幾年」那根拉桿無關。
+            # 拉桿一動它們就跟著變的話，代表我把兩個時間軸接錯線了
+            fy_rows = lambda: page.evaluate(
+                "() => [...document.querySelectorAll('#valuBody .fy tbody tr,"
+                " #valuBody .slice-row')].map(r => r.textContent.replace(/\\s+/g, ' ').trim())")
+            qa5, fy5 = qa_rows(), fy_rows()
             print(f"  {'✅' if answered else '❌'} 盈餘體檢四題都有答案、都寫明拿哪兩段比")
             for x in qa:
                 print(f"      {x['mark']} {x['ask']} {x['val']}　{x['why']}　[{x['basis']}]")
@@ -332,6 +596,13 @@ def run(symbol: str, port: int) -> bool:
             if not stable:
                 print("      1年:", qa1[:1], "\n      5年:", qa5[:1])
             results.append(stable)
+            fy1 = fy_rows()
+            fy_same = bool(fy5) and fy1 == fy5
+            print(f"  {'✅' if fy_same else '❌'} 切到 1 年後，財年表格與切蛋糕原封不動"
+                  f"（{len(fy5)} 列）")
+            if not fy_same:
+                print("      1年:", fy1[:1], "\n      5年:", fy5[:1])
+            results.append(fy_same)
             dated = page.evaluate("""() => {
                 const t = [...document.querySelectorAll('#valuBody .caveat')]
                     .find(c => c.textContent.includes('最低'));
@@ -380,16 +651,190 @@ def run(symbol: str, port: int) -> bool:
             print(f"  {'✅' if fair['yellow'] else '❌'} 現價與盈餘兩個前提數字是霓虹黃")
             results.append(fair["yellow"])
             results.append(check(page, "漲幅拆解", "#valuBody .valu-split .valu-line"))
-            results.append(check(page, "營收毛利", "#valuBody .valu-cell"))
             for t in page.locator("#valuBody .valu-line").all_inner_texts():
                 print("     ", t.replace("\n", "  "))
             # 拆解的算術必須自洽：(1+獲利)×(1+倍數) 要等於 (1+總漲幅)
             nums = page.evaluate("""() => [...document.querySelectorAll('#valuBody .valu-line .vn')]
                 .map(x => parseFloat(x.textContent))""")
             e, m, p = nums
+            split_vals = (e, m)      # 第二區的整區結論要拿這兩個數字對答案
             exact = abs((1 + e / 100) * (1 + m / 100) - (1 + p / 100)) < 0.01
             print(f"  {'✅' if exact else '❌'} 拆解自洽: (1{e:+.1f}%)×(1{m:+.1f}%) = 1{p:+.1f}%")
             results.append(exact)
+            # ── 三個大區塊：分群只是重排，資料一格都不准少 ──────────
+            parts = page.evaluate(
+                "() => [...document.querySelectorAll('#valuBody .valu-part')]"
+                ".map(p => p.textContent.trim())")
+            grouped = len(parts) == 3 and all("、" in p for p in parts)
+            print(f"  {'✅' if grouped else '❌'} 估值卡分成三個大區塊 {parts}")
+            results.append(grouped)
+            # 大標必須比小標醒目，不然分群等於沒做 —— 六個一樣大的標題就是原本那片牆
+            weight = page.evaluate("""() => {
+                const p = document.querySelector('#valuBody .valu-part');
+                const h = document.querySelector('#valuBody h3');
+                const n = e => parseFloat(getComputedStyle(e).fontSize);
+                return { part: n(p), h3: n(h) }; }""")
+            louder = weight["part"] > weight["h3"]
+            print(f"  {'✅' if louder else '❌'} 大區塊標題比小標大 {weight}")
+            results.append(louder)
+
+            # ── 第一區的結論 ────────────────────────────────────────
+            # 結論和百分位一定要對得上。分兩條路送到畫面上，遲早出現「第 90% ＋ 偏便宜」
+            pv = page.evaluate("""() => {
+                const e = document.querySelector('#valuBody .part-end');
+                if (!e) return null;
+                const n = document.querySelector('#valuBody .valu-now span b');
+                return { txt: e.textContent.replace(/\\s+/g, ' ').trim(),
+                         head: (n ? n.textContent : '').trim() }; }""")
+            if pv is None:
+                print("  ❌ 第一區沒有結論")
+                results.append(False)
+            else:
+                import re as _re
+                pcts = [int(x) for x in _re.findall(r"(\d+)%", pv["txt"])]
+                face = next((f for f in ("🔴", "🟠", "🟢", "😐", "⚠️") if f in pv["txt"]), None)
+                agree = (face is not None and pcts
+                         and pv["head"].rstrip("%") == str(pcts[0])
+                         and not (pcts[0] >= 60 and "偏便宜" in pv["txt"])
+                         and not (pcts[0] <= 40 and "偏貴" in pv["txt"]))
+                print(f"  {'✅' if agree else '❌'} 第一區有結論、且跟百分位沒打架　{pv['txt'][:110]}")
+                results.append(agree)
+                # 這張卡沒有同業數字也沒有現金流模型，講「值多少」就是憑空生出來的
+                humble = ("不是跟別家公司比" in pv["txt"]
+                          and "不是在說它應該值多少錢" in pv["txt"])
+                print(f"  {'✅' if humble else '❌'} 結論有講清楚自己沒回答什麼")
+                results.append(humble)
+
+            # ── 財年表格 ────────────────────────────────────────────
+            fy = page.evaluate("""() => {
+                const t = document.querySelector('#valuBody table.fy');
+                if (!t) return null;
+                const head = [...t.querySelectorAll('thead th')].map(h => h.textContent.trim());
+                const rows = [...t.querySelectorAll('tbody tr')].map(r => ({
+                    key: r.querySelector('.fy-k').textContent.trim(),
+                    vals: [...r.querySelectorAll('td:not(.fy-k) .fy-v')].map(v => v.textContent.trim()),
+                    deltas: [...r.querySelectorAll('td:not(.fy-k) .fy-d')].map(v => v.textContent.trim()),
+                }));
+                return { head, rows }; }""")
+            if fy is None:
+                print("  ❌ 財年表格沒畫出來")
+                results.append(False)
+            else:
+                years_n = len(fy["head"]) - 1
+                shaped = (len(fy["rows"]) == 6 and years_n >= 2
+                          and all(len(r["vals"]) == years_n and len(r["deltas"]) == years_n
+                                  and all(v for v in r["vals"] + r["deltas"])
+                                  for r in fy["rows"]))
+                print(f"  {'✅' if shaped else '❌'} 財年表格 6 列 × {years_n} 欄，沒有空格子")
+                for r in fy["rows"]:
+                    print(f"      {r['key']:<5}" + "".join(
+                        f"{v:>12}{d:>9}" for v, d in zip(r["vals"], r["deltas"])))
+                results.append(shaped)
+
+                # 這次改動最容易做錯、也是加這張表的全部理由：
+                # 「率」的變化一定要用 pp，用 % 會被讀成「公司少賺四成半」
+                units = {r["key"]: {d[-2:] if d.endswith("pp") else d[-1:]
+                                    for d in r["deltas"] if d != "—"} for r in fy["rows"]}
+                right = (all(units[k] <= {"pp"} for k in ("毛利率", "淨利率"))
+                         and all(units[k] <= {"%"} for k in ("營收", "盈餘", "股數", "每股盈餘")))
+                print(f"  {'✅' if right else '❌'} 率用 pp、金額與數量用 %　{units}")
+                results.append(right)
+
+                # 最新的財年在最左邊。排反了整張表還是畫得出來，但「第一眼看到今年」這件事就沒了
+                ys = [int(h[:4]) for h in fy["head"][1:]]
+                newest_first = ys == sorted(ys, reverse=True)
+                print(f"  {'✅' if newest_first else '❌'} 最新財年排最左邊 {ys}")
+                results.append(newest_first)
+
+                # 最舊那一欄（現在在最右邊）沒有前一年可比，必須留白 —— 不准變成 0% 或 undefined
+                oldest = {r["deltas"][-1] for r in fy["rows"]}
+                blank = oldest == {"—"}
+                print(f"  {'✅' if blank else '❌'} 最舊財年的變化留白不寫 0 {oldest}")
+                results.append(blank)
+
+                # 窄畫面靠左右滑，指標那一欄要釘住 —— 滑到最舊那年卻看不到列名等於沒東西可看
+                stuck = page.evaluate("""() => {
+                    const k = document.querySelector('#valuBody .fy .fy-k');
+                    const w = document.querySelector('#valuBody .fy-wrap');
+                    const s = getComputedStyle(k);
+                    return { pos: s.position, bg: s.backgroundColor,
+                             scroll: getComputedStyle(w).overflowX }; }""")
+                pinned = (stuck["pos"] == "sticky" and stuck["scroll"] == "auto"
+                          and "rgba(0, 0, 0, 0)" != stuck["bg"])
+                print(f"  {'✅' if pinned else '❌'} 表格可左右滑、指標欄釘住且有底色 {stuck}")
+                results.append(pinned)
+
+            # ── 切蛋糕：每股盈餘 = 餅 ÷ 份數 ────────────────────────
+            sl = page.evaluate("""() => {
+                const w = document.querySelector('#valuBody .slice-wrap');
+                const s = w && w.querySelector('.slice');
+                if (!s) return null;
+                return { rows: [...s.querySelectorAll('.slice-row')].map(r => ({
+                            k: r.querySelector('.sk').textContent.replace(/\\s+/g, ' ').trim(),
+                            pct: parseFloat(r.querySelector('.sp').textContent) })),
+                         // 結論現在站在框子外面（框裡是算式，框外是答案），所以從外層抓
+                         end: (w.querySelector('.slice-end') || {}).textContent,
+                         side: (() => { const e = w.querySelector('.slice-end');
+                             return e ? e.getBoundingClientRect().left
+                                        > s.getBoundingClientRect().right - 1 : false; })(),
+                         txt: w.textContent.replace(/\\s+/g, ' ').trim() }; }""")
+            if sl is None:
+                # 去年虧錢或沒有股數資料時就該整塊不畫。要能講出是哪一種，不然「沒畫」也可能是壞了
+                why = page.evaluate("""() => {
+                    const r = [...document.querySelectorAll('#valuBody .fy tbody tr')]
+                        .find(x => x.querySelector('.fy-k').textContent.trim() === '股數');
+                    return r ? r.textContent.replace(/\\s+/g, ' ').trim() : '沒有股數列'; }""")
+                print(f"  ⚠️ 切蛋糕沒顯示（去年虧錢或缺股數，兩者都該不畫）: {why[:70]}")
+            else:
+                pcts = [r["pct"] for r in sl["rows"]]
+                net, sh, eps = pcts
+                # 三個數字要真的相乘得回來。對不起來就不是拆解，是三個各講各話的數字
+                ok = (len(pcts) == 3
+                      and abs((1 + net / 100) / (1 + sh / 100) - (1 + eps / 100)) < 0.01)
+                print(f"  {'✅' if ok else '❌'} 切蛋糕自洽: (1{net:+.1f}%)÷(1{sh:+.1f}%) = 1{eps:+.1f}%")
+                for r in sl["rows"]:
+                    print(f"      {r['k']}　{r['pct']:+.1f}%")
+                results.append(ok)
+                # 「分母」在這張卡已經指本益比的分母了，這裡再用一次一定會搞混
+                clean = "分母" not in sl["txt"] and "分子" not in sl["txt"]
+                print(f"  {'✅' if clean else '❌'} 切蛋糕不重複使用「分子／分母」")
+                results.append(clean)
+
+                # 拆完要給結論，而且結論不能跟數字打架：
+                # 公司少賺、每股盈餘卻變多，那是回購撐的，不准給 👍
+                end = (sl["end"] or "").replace("\n", " ").strip()
+                face = next((f for f in ("👍", "👎", "😐") if f in end), None)
+                honest = face is not None and not (face == "👍" and net <= 0)
+                print(f"  {'✅' if honest else '❌'} 切蛋糕有結論、且沒把回購撐起來的當好消息　{end[:90]}")
+                results.append(honest)
+                # 結論要站在框子右邊。掉回框子裡就會被當成算式的第四行
+                beside = sl["side"] and "➔" in end
+                print(f"  {'✅' if beside else '❌'} 結論在框子右邊、有箭頭指過去")
+                results.append(beside)
+
+            # ── 第二區的整區結論 ────────────────────────────────────
+            # 這一條的全部意義：它必須跟它讀的兩個小節對得起來。
+            # 對不起來的話，畫面上會出現「四題有 3 題亮紅燈」跟「👍」上下並排
+            sv = page.evaluate("""() => {
+                const e = [...document.querySelectorAll('#valuBody .part-end')].pop();
+                return e ? { txt: e.textContent.replace(/\\s+/g, ' ').trim() } : null; }""")
+            if sv is None:
+                print("  ❌ 第二區沒有整區結論")
+                results.append(False)
+            else:
+                import re as _re
+                nums = [float(x) for x in _re.findall(r"([+-]\d+\.\d)%", sv["txt"])]
+                face = next((f for f in ("👍", "👎", "⚠️") if f in sv["txt"]), None)
+                # 印出來的兩個數字必須跟上面漲幅拆解那一節的是同一組
+                same = len(nums) >= 2 and abs(nums[0] - split_vals[0]) < 0.05 \
+                    and abs(nums[1] - split_vals[1]) < 0.05
+                # 而且「主要是誰撐的」要跟那兩個數字的大小一致，不能自己講自己的
+                by_ok = ("本業" in sv["txt"]) == (nums[0] > nums[1]) if len(nums) >= 2 else False
+                ok = face is not None and same and by_ok
+                print(f"  {'✅' if ok else '❌'} 第二區整區結論、且跟漲幅拆解的數字一致"
+                      f"　{sv['txt'][:120]}")
+                results.append(ok)
+
             page.locator("#valuBody").screenshot(path=SHOTS / "4-valuation.png")
             # 本益比區間和漲跌拆解必須講同一段時間，不能一個五年一個一年
             spans = page.evaluate("""() => [...document.querySelectorAll('#valuBody h3')]
@@ -464,7 +909,7 @@ def run(symbol: str, port: int) -> bool:
                 const at = k => h.find(x => x.textContent.includes(k)).getBoundingClientRect().top;
                 const txt = document.querySelector('#valuBody').textContent;
                 return { spark: top('#peSpark'), split: at('股價漲跌是從哪來'),
-                         rev: at('營收與利潤率'), chart: top('#trendChart'),
+                         rev: at('利潤率'), chart: top('#trendChart'),
                          dropped: !txt.includes('沒有往未來外推') && !txt.includes('站在哪裡') }; }""")
             placed = (order["spark"] < order["split"] < order["rev"] < order["chart"]
                       and order["dropped"])
@@ -774,8 +1219,8 @@ def run(symbol: str, port: int) -> bool:
         page.screenshot(path=SHOTS / "2-calendar.png")
         page.click("#calClose")
 
-        print("\n資金流向彈窗：")
-        results.append(check(page, "資金流向按鈕", "#btnRot"))
+        print("\nRRG 輪動圖彈窗：")
+        results.append(check(page, "RRG 側邊欄按鈕（標題就叫 RRG，不再叫資金流向）", "#btnRot"))
         page.click("#btnRot")
         page.wait_for_selector("#rotBody .rot-row, #rotBody .err", timeout=60_000)
         results.append(check(page, "板塊排行", "#rotBody .rot-row"))
@@ -784,6 +1229,25 @@ def run(symbol: str, port: int) -> bool:
         full = n_risk == len(RISK_RATIOS)
         print(f"  {'✅' if full else '❌'} 風險胃納比值 {n_risk}/{len(RISK_RATIOS)} 列都畫出來")
         results.append(full)
+        # 每一列都要有走勢線。只給期末一個百分比的話，「一路跌」跟「衝上去再摔回來」
+        # 長得一模一樣 —— 那兩件事對配置的意義完全相反
+        n_line = page.locator("#rotBody .rot-risk .rot-ratio polyline").count()
+        lined = n_line == len(RISK_RATIOS)
+        print(f"  {'✅' if lined else '❌'} 比值走勢線 {n_line}/{len(RISK_RATIOS)} 條都畫出來")
+        results.append(lined)
+        # 拉桿拉長，線上的點就要變多。不變的話這條線根本沒跟著區間走
+        n_pts = lambda: page.evaluate(
+            """() => document.querySelector('#rotBody .rot-ratio polyline')
+                     .getAttribute('points').trim().split(/\\s+/).length""")
+        few = n_pts()
+        page.evaluate("""() => { const s = document.querySelector('#rotSlider');
+            s.value = s.max; s.dispatchEvent(new Event('input', { bubbles: true })); }""")
+        many = n_pts()
+        page.evaluate("""() => { const s = document.querySelector('#rotSlider');
+            s.value = 4; s.dispatchEvent(new Event('input', { bubbles: true })); }""")
+        grew = many > few
+        print(f"  {'✅' if grew else '❌'} 走勢線跟著拉桿變長 {few} 點 → {many} 點")
+        results.append(grew)
         # 順序是固定的（config 的 SECTOR_ETF），不隨天數重排 —— 每換一次區間就跳位置，根本追不到
         order = etf_order(page)
         fixed = order == list(SECTOR_ETF.values())
@@ -794,10 +1258,100 @@ def run(symbol: str, port: int) -> bool:
             print("   ", t.replace("\n", "  "))
         titled = page.evaluate("""() => [...document.querySelectorAll('#rotBody h3')].map(
             h => getComputedStyle(h).color)""")
-        yellow = len(titled) == 2 and all(c == "rgb(255, 212, 0)" for c in titled)
-        print(f"  {'✅' if yellow else '❌'} 兩個標題是黃橘色 {titled}")
+        yellow = len(titled) == 3 and all(c == "rgb(255, 212, 0)" for c in titled)
+        print(f"  {'✅' if yellow else '❌'} 三個標題是黃橘色 {titled}")
         results.append(yellow)
         page.screenshot(path=SHOTS / "9-rotation.png")
+
+        # ── RRG：十一個板塊要全部出現在同一張二維圖上 ───────────────
+        results.append(check(page, "RRG 二維圖", "#rrgWrap svg .rrg-dot"))
+        rrg = page.evaluate("""() => {
+            const g = [...document.querySelectorAll('.rrg-dot')];
+            return {
+              n: g.length,
+              labels: g.map(e => e.dataset.label),
+              // 尾巴最後一點必須落在看得到的那顆點上，不然軌跡跟點對不起來
+              tailed: g.filter(e => e.querySelector('path')).length,
+              // 顏色是漸層的：越右上越綠。抓最強和最弱的兩顆比色相
+              best: g.reduce((a, b) => (+a.dataset.x + +a.dataset.y) > (+b.dataset.x + +b.dataset.y) ? a : b).dataset.c,
+              worst: g.reduce((a, b) => (+a.dataset.x + +a.dataset.y) < (+b.dataset.x + +b.dataset.y) ? a : b).dataset.c,
+            };
+        }""")
+        hue = lambda c: int(c.split("(")[1].split()[0])
+        ok = (rrg["n"] == len(SECTOR_ETF) and rrg["tailed"] == rrg["n"]
+              and len(set(rrg["labels"])) == rrg["n"])
+        print(f"  {'✅' if ok else '❌'} {rrg['n']} 個板塊各一顆點、各一條尾巴 {rrg['labels']}")
+        results.append(ok)
+        greener = hue(rrg["best"]) > hue(rrg["worst"])
+        print(f"  {'✅' if greener else '❌'} 越右上越綠：最強 {rrg['best']} vs 最弱 {rrg['worst']}")
+        results.append(greener)
+
+        # 滑鼠移過去要顯示座標。這是這次的主要需求，沒跳出來就是白做
+        page.hover("#rrgWrap .rrg-dot .rrg-hit")
+        page.wait_for_selector("#rrgTip:not(.hidden)", timeout=10_000)
+        tip = page.evaluate("""() => {
+            const t = document.querySelector('#rrgTip');
+            const xy = t.querySelector('.rrg-xy');
+            return { text: t.innerText.replace(/\\n/g, ' '), xy: xy && xy.textContent.trim(),
+                     colour: xy && getComputedStyle(xy).color,
+                     // 游標下那一顆以外要退到背景，十一條尾巴疊著看不出在看哪一條
+                     dimmed: document.querySelector('.rrg-wrap').classList.contains('picking') };
+        }""")
+        import re as _re
+        shown = bool(tip["xy"] and _re.fullmatch(r"\(\s*[-+][\d.]+\s*,\s*[-+][\d.]+\s*\)", tip["xy"]))
+        print(f"  {'✅' if shown else '❌'} 滑過去顯示座標 {tip['xy']}（數字顏色 {tip['colour']}）")
+        print(f"     提示內容: {tip['text']}")
+        results.append(shown and tip["dimmed"])
+        page.screenshot(path=SHOTS / "9b-rrg.png")
+
+        # 左邊的分類清單：點一個，那一條軌跡走一次，走完自己停
+        picks = page.locator("#rrgList .rrg-pick")
+        n_pick = picks.count()
+        listed = n_pick == len(SECTOR_ETF)
+        print(f"  {'✅' if listed else '❌'} 左側 {n_pick} 個分類按鈕")
+        results.append(listed)
+        dashed = "() => { const p = document.querySelector('.rrg-dot[data-etf=\"XLK\"] path'); " \
+                 "return { off: parseFloat(p.style.strokeDashoffset || 0), " \
+                 "playing: document.querySelector('.rrg-wrap').classList.contains('playing') }; }"
+        page.click("#rrgList .rrg-pick[data-etf='XLK']")
+        page.wait_for_timeout(400)
+        mid = page.evaluate(dashed)          # 走到一半：路只畫出一部分
+        page.wait_for_timeout(3000)
+        end = page.evaluate(dashed)          # 走完：整條路都在，而且自己停了
+        walked = mid["playing"] and mid["off"] > 1 and not end["playing"] and end["off"] < 1
+        print(f"  {'✅' if walked else '❌'} 點分類後軌跡會走、走完自己停 {mid} → {end}")
+        results.append(walked)
+        page.click("#rrgList .rrg-pick[data-etf='XLK']")
+        page.wait_for_timeout(400)
+        again = page.evaluate(dashed)
+        print(f"  {'✅' if again['playing'] else '❌'} 再點一次會再走一次 {again}")
+        results.append(again["playing"])
+        page.wait_for_timeout(2600)
+
+        # 換區間的時候，終點不准移動。座標軸每格自己縮放的話，同一個板塊的終點
+        # 明明沒變、看起來卻在跑 —— 使用者會以為換個區間就走了不同的路
+        where = """() => { const c = document.querySelector('.rrg-dot[data-etf="XLK"] .rrg-now');
+                   return [Math.round(+c.getAttribute('cx')), Math.round(+c.getAttribute('cy'))]; }"""
+        seen = []
+        # 最後一格要留在預設的 4 週 —— 下面的拉桿檢查是拿「4 週 → 26 週」比數字，
+        # 這裡收尾時停在 26 的話，那個比較就變成 26 比 26，會假性失敗
+        for v in (2, 6, 14, 26, 4):
+            page.evaluate(f"""() => {{ const s = document.querySelector('#rotSlider');
+                s.value = {v}; s.dispatchEvent(new Event('input')); }}""")
+            page.wait_for_timeout(120)
+            seen.append(tuple(page.evaluate(where)))
+        still = len(set(seen)) == 1
+        print(f"  {'✅' if still else '❌'} 換區間時終點釘在同一個像素 {seen}")
+        results.append(still)
+
+        # 四象限清單：圖看不懂沒關係，這裡要給看得懂的答案
+        groups = page.evaluate(
+            "() => [...document.querySelectorAll('.rrg-group')].map(e => e.innerText.replace(/\\n/g, ' | '))")
+        has_groups = len(groups) >= 2
+        print(f"  {'✅' if has_groups else '❌'} 四象限分組清單 {len(groups)} 組")
+        for g in groups:
+            print("   ", g)
+        results.append(has_groups)
 
         # 滑過 ETF 代號要跳出它的成份股。代號本身看不出裡面裝什麼
         page.hover("#rotBody .rot-row .etf")
@@ -819,22 +1373,21 @@ def run(symbol: str, port: int) -> bool:
         print("  ✅ 滑鼠移開就收起來")
         results.append(True)
 
-        # 換區間必須真的重算，不是換個標題
-        opts = page.locator("#rotRanges label").all_inner_texts()
+        # 拉桿必須真的重算，不是換個標題。而且要在同一次互動內就換好 ——
+        # 拖一格等一次網路的話，拉桿就不是拉桿了，所以這裡不給任何網路的時間
+        steps = page.evaluate("() => +document.querySelector('#rotSlider').max") + 1
         before = page.locator("#rotBody .rot-row .num").first.inner_text()
-        page.click("#rotRanges label:has(input[value='252'])")
-        page.wait_for_function(
-            "t => { const n = document.querySelector('#rotBody .rot-row .num'); "
-            "return n && n.innerText !== t; }", arg=before, timeout=60_000)
+        page.evaluate("""() => { const s = document.querySelector('#rotSlider');
+            s.value = s.max; s.dispatchEvent(new Event('input', { bubbles: true })); }""")
         after = page.locator("#rotBody .rot-row .num").first.inner_text()
         label = page.locator("#rotBody .meta").first.inner_text()
-        switched = "1 年" in label and "252" in label
-        print(f"  {'✅' if switched else '❌'} 區間選單 {opts}：21 天 {before} → 1 年 {after}（第一列都是 XLK）")
+        switched = "26 週" in label and "130" in label and after != before
+        print(f"  {'✅' if switched else '❌'} 拉桿共 {steps} 格：4 週 {before} → 26 週 {after}（第一列都是 XLK）")
         print("     ", label)
         results.append(switched)
-        # 換了區間，板塊的上下順序不准動。這是這次改動要守住的東西
+        # 拉了區間，板塊的上下順序不准動。這是這次改動要守住的東西
         still = etf_order(page) == order
-        print(f"  {'✅' if still else '❌'} 換區間後板塊順序沒有跳動")
+        print(f"  {'✅' if still else '❌'} 拉動拉桿後板塊順序沒有跳動")
         results.append(still)
         page.click("#rotClose")
 

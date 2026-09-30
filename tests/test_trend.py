@@ -124,3 +124,20 @@ def test_too_few_prices_raises():
     with pytest.raises(RuntimeError):
         rel = quarterly("2024-01-10", 9)
         build_trend({"releases": rel, "closes": closes("2024-01-01", 1, 100.0)}, known(rel), 1)
+
+
+def test_the_verdict_threshold_comes_from_config_not_a_hardcoded_sigma():
+    # 判斷線和圖上的帶子必須是同一組數字，不然文字說「在軌道內」圖上卻在帶子外
+    from app.config import TREND_BAND_KS, TREND_VERDICT_K
+    from app.trend import _verdict
+
+    assert min(TREND_BAND_KS) == TREND_VERDICT_K
+    assert _verdict(100 + TREND_VERDICT_K - 0.01, 100, 1.0)["code"] == "fair"
+    assert _verdict(100 + TREND_VERDICT_K + 0.01, 100, 1.0)["code"] == "rich"
+    assert _verdict(100 - TREND_VERDICT_K - 0.01, 100, 1.0)["code"] == "cheap"
+
+
+def test_the_front_end_is_told_which_bands_to_draw():
+    rel = quarterly("2024-01-10", 9)
+    t = build_trend({"releases": rel, "closes": closes("2024-01-01", 780, 100.0)}, known(rel), 2)
+    assert t["bands"] and t["verdict_k"] == min(t["bands"])

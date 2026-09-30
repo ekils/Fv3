@@ -12,14 +12,24 @@
 
 from .config import (
     RISK_RATIOS,
-    ROTATION_RANGES,
     ROTATION_NARROW_MAX,
     ROTATION_NOISE_PCT,
     ROTATION_SLOPE_DAYS,
     ROTATION_WINDOWS,
+    RRG_BASELINE_DAYS,
+    RRG_MOMENTUM_DAYS,
+    RRG_ORIGIN_NOISE,
+    RRG_TAIL_STRIDE_DAYS,
     SECTOR_ETF,
     SECTOR_LABELS,
 )
+
+QUADRANTS = {
+    "lead": "領先",
+    "weaken": "轉弱",
+    "lag": "落後",
+    "improve": "改善中",
+}
 
 
 def _change(series: list[float], days: int) -> float | None:
@@ -42,20 +52,43 @@ def _ratio(closes: dict[str, list[float]], up: str, down: str) -> list[float]:
     return [x / y for x, y in zip(a, b) if y]
 
 
-def _risk(closes: dict[str, list[float]]) -> list[dict]:
+def _line(series: list[float], days: int) -> list[float]:
+    """這條比值在這段區間走過的路，起點歸零。
+
+    畫成線才看得出「-3.2%」是一路跌下來的，還是先漲一大段再摔回來 —— 這兩件事
+    對配置的意義完全不同，但它們的期末數字一模一樣。
+    每一點讀作「比區間第一天多幾 %」，跟旁邊那個百分比同一個單位。
+    """
+    if len(series) <= days:
+        return []
+    window = series[-days - 1:]
+    first = window[0]
+    if not first:
+        return []
+    return [round(v / first * 100 - 100, 2) for v in window]
+
+
+def _risk(closes: dict[str, list[float]], days: int) -> list[dict]:
+    """風險胃納也跟著拉桿走。
+
+    固定看「近三月」的話，拉桿拉到 1 天和拉到半年下半部長得一模一樣 ——
+    那條拉桿就變成半殘的，使用者會以為畫面壞了。
+    """
     out = []
     for spec in RISK_RATIOS:
         if spec["up"] not in closes or spec["down"] not in closes:
             continue
         series = _ratio(closes, spec["up"], spec["down"])
-        moves = {label: _change(series, n) for label, n in ROTATION_WINDOWS}
-        recent = moves["3月"]
+        move = _change(series, days)
         out.append({
             "name": spec["name"],
             "pair": f"{spec['up']}÷{spec['down']}",
-            "moves": {k: round(v, 1) for k, v in moves.items() if v is not None},
-            "tone": _tone(recent) if recent is not None else "flat",
-            "text": spec["on"] if (recent or 0) > 0 else spec["off"],
+            "line": _line(series, days),
+            "move": round(move, 1) if move is not None else None,
+            "moves": {label: round(v, 1) for label, n in ROTATION_WINDOWS
+                      if (v := _change(series, n)) is not None},
+            "tone": _tone(move) if move is not None else "flat",
+            "text": spec["on"] if (move or 0) > 0 else spec["off"],
         })
     return out
 
@@ -72,6 +105,79 @@ def _verdict(sectors: list[dict], risk: list[dict]) -> dict:
             "是錢從每一個別的地方抽出來，全部灌進同一個地方。") if fighting else ""
     return {"code": "narrow", "text":
             f"只有 {names} 在贏大盤，其他全在失血。{tail}"}
+
+
+def _sma(series: list[float], n: int) -> list[float]:
+    """簡單移動平均。回傳長度是 len(series) - n + 1，對齊到每個窗口的最後一天。"""
+    total = sum(series[:n])
+    out = [total / n]
+    for i in range(n, len(series)):
+        total += series[i] - series[i - n]
+        out.append(total / n)
+    return out
+
+
+def _quadrant(x: float, y: float) -> str:
+    """右上領先、右下轉弱、左下落後、左上改善中。原點附近不算數。"""
+    if abs(x) < RRG_ORIGIN_NOISE and abs(y) < RRG_ORIGIN_NOISE:
+        return "flat"
+    if x >= 0:
+        return "lead" if y >= 0 else "weaken"
+    return "improve" if y >= 0 else "lag"
+
+
+def _track(closes: dict[str, list[float]], market: list[float], etf: str) -> tuple[list, list]:
+    """這個板塊在 RRG 平面上走過的整條路。
+
+    兩個座標都以 0 為中心（不是業界常用的 100）—— 「+4.6」讀作「比大盤強 4.6 個百分點」，
+    比「104.6」少一次心算。右上角兩個都是正的，就是最強的角落。
+    """
+    series = closes.get(etf)
+    if not series:
+        return [], []
+    rs = [a / b * 100 for a, b in zip(series, market) if b]
+    if len(rs) < RRG_BASELINE_DAYS + RRG_MOMENTUM_DAYS + 1:
+        return [], []
+    base = _sma(rs, RRG_BASELINE_DAYS)
+    # 強度 = 相對強度離它自己這一季的均線幾 %。用均線當基準，整體牛熊會被一起吃掉
+    ratio = [r / b * 100 - 100 for r, b in zip(rs[RRG_BASELINE_DAYS - 1:], base) if b]
+    mom = [(ratio[i] + 100) / (ratio[i - RRG_MOMENTUM_DAYS] + 100) * 100 - 100
+           for i in range(RRG_MOMENTUM_DAYS, len(ratio))]
+    return ratio[RRG_MOMENTUM_DAYS:], mom
+
+
+def _rrg(closes: dict[str, list[float]], benchmark: str, days: int) -> list[dict]:
+    """十一個板塊 = 同一張二維圖上的十一個點，不是十一個維度。
+
+    拉桿決定尾巴涵蓋多長 —— 尾巴的方向就是「錢正在往哪個象限搬」，
+    只看當下那一顆點的位置，看不出它是剛進來還是正要走。
+    """
+    market = closes[benchmark]
+    out = []
+    for sector, etf in SECTOR_ETF.items():
+        ratio, mom = _track(closes, market, etf)
+        if not mom:
+            continue
+        back = min(days, len(mom) - 1)
+        # 從最後一天往回數幾天。終點（往回 0 天）永遠在，短區間的點是長區間的子集
+        offsets = sorted({0, back} | set(range(0, back + 1, RRG_TAIL_STRIDE_DAYS)), reverse=True)
+        out.append({
+            "etf": etf,
+            "label": SECTOR_LABELS.get(sector, sector),
+            "x": round(ratio[-1], 2),
+            "y": round(mom[-1], 2),
+            "quadrant": _quadrant(ratio[-1], mom[-1]),
+            "tail": [{"x": round(ratio[-1 - k], 2), "y": round(mom[-1 - k], 2)} for k in offsets],
+        })
+    return out
+
+
+def range_label(days: int) -> str:
+    """交易日數翻成人話。滑桿上要讀得懂，所以主單位是「週」，月份只當括號裡的提示。"""
+    if days < 5:
+        return f"{days} 天"
+    months = round(days / 21)
+    return f"{days // 5} 週" + (f"（約 {months} 個月）" if months else "")
 
 
 def build_rotation(closes: dict[str, list[float]], asof: str, benchmark: str,
@@ -100,16 +206,16 @@ def build_rotation(closes: dict[str, list[float]], asof: str, benchmark: str,
     if not sectors:
         raise RuntimeError("沒有任何類股 ETF 的資料")
 
-    risk = _risk(closes)
+    risk = _risk(closes, days)
     return {
         "asof": asof,
         "days": days,
-        "range_label": dict((n, l) for l, n in ROTATION_RANGES).get(days, f"{days} 天"),
-        "ranges": [{"label": l, "days": n} for l, n in ROTATION_RANGES],
+        "range_label": range_label(days),
         "sectors": sectors,
         "market": {"etf": benchmark,
                    "returns": {label: round(v, 1) for label, n in ROTATION_WINDOWS
                                if (v := _change(market, n)) is not None}},
         "risk": risk,
+        "rrg": _rrg(closes, benchmark, days),
         "verdict": _verdict(sectors, risk),
     }

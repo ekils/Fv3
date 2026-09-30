@@ -139,10 +139,6 @@ def build_report(
     for a in articles:
         by_day.setdefault(_trading_day(a), []).append(a)
 
-    # 新聞來源可能靜默截斷（Finnhub 免費 tier 只回最近約兩週），
-    # 所以要區分「沒有新聞」和「這天根本不在資料涵蓋範圍內」。
-    covered_from = min(by_day, default=None)
-
     events = []
     matched: set[str] = set()
     for bar in prices[1:]:
@@ -157,7 +153,6 @@ def build_report(
                 "pct": bar["pct"],
                 "articles": hits,
                 "sources": sorted({a["source"] for a in hits}),
-                "covered": covered_from is not None and bar["date"] >= covered_from,
                 "market": _market(bar["date"], bar["pct"], fundamentals.get("sector", ""), bench),
             }
         )
@@ -178,5 +173,4 @@ def build_report(
         },
         "source_counts": Counter(a["source"] for a in articles).most_common(),
         "total_articles": len(articles),
-        "news_coverage": {"from": covered_from, "to": max(by_day, default=None)},
     }
